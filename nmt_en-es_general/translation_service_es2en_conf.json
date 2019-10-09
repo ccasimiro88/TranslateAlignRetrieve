@@ -1,0 +1,19 @@
+{
+    "models_root": "./data",
+    "models": [
+        {
+            "id": 200,
+            "name": "best_model_es2en",
+            "model": "es2en/train/es2en_transformer_shared_vocab_embs_best_60-80k.pt",
+            "timeout": 600,
+            "on_timeout": "to_cpu",
+            "load": true,
+            "opt": {
+                "gpu": 0,
+                "batch_size": 1,
+                "beam_size": 5
+                   }
+
+        }
+    ]
+}
