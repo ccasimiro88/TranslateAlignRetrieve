@@ -47,8 +47,8 @@ def create_datasets(source_file, target_file, source_lang, target_lang, output_d
     random.seed(10)
     random.shuffle(source_target_lines_clean)
     source_target_lines_test = source_target_lines_clean[:test_size+1]
-    source_target_lines_valid = source_target_lines_clean[test_size+1:(valid_size+test_size)+1]
-    source_target_lines_train = source_target_lines_clean[(valid_size+test_size)+1:]
+    source_target_lines_valid = source_target_lines_clean[test_size+1:(valid_size+test_size)+2]
+    source_target_lines_train = source_target_lines_clean[(valid_size+test_size)+2:]
 
     source_test = os.path.join(output_dir, 'test.{}'.format(source_lang))
     target_test = os.path.join(output_dir, 'test.{}'.format(target_lang))

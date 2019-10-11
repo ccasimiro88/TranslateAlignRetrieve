@@ -1,28 +1,31 @@
 #!/bin/bash
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ENV_DIR=~/projects/hutoma/nmt_en-es_general/env/bin
+ENV_DIR=${SCRIPT_DIR}/env/bin
 source $ENV_DIR/activate
 
 MODEL_CHECKPOINT=$1
 TEST_SRC=$2
-TEST_TGT=$4
 LANG_SRC=$3
+TEST_TGT=$4
 LANG_TGT=$5
 
-#Preprocess functions 
-PREPROCESS_DIR=$SCRIPT_DIR/data/$LANG_SRC'2'$LANG_TGT/preprocess
+#Preprocess functions
+TRANSLATION_DIR=$LANG_SRC'2'$LANG_TGT
+PREPROCESS_DIR=$SCRIPT_DIR/data/$TRANSLATION_DIR/preprocess
 MOSES_DIR=$SCRIPT_DIR/tools/mosesdecoder
-SUBWORDNMT_DIR=$SCRIPT_DIR/tools/subword-nmt
+EVALUATE_DIR=$SCRIPT_DIR/data/$TRANSLATION_DIR/evaluate/
+mkdir -p $EVALUATE_DIR
 
 preprocess_src() {
   INPUT_FILE=$1
   LANG=$2
 
   cat $INPUT_FILE |
+  iconv -t utf8 |
   perl $MOSES_DIR/scripts/tokenizer/normalize-punctuation.perl -l $LANG |
   perl $MOSES_DIR/scripts/tokenizer/tokenizer.perl -l $LANG -no-escape |
   perl $MOSES_DIR/scripts/recaser/truecase.perl --model $PREPROCESS_DIR/truecase-model.$LANG_SRC |
-  python $SUBWORDNMT_DIR/subword_nmt/apply_bpe.py -c $PREPROCESS_DIR/joint_bpe --vocabulary $PREPROCESS_DIR/vocab.$LANG --vocabulary-threshold 50
+  subword-nmt apply-bpe -c $PREPROCESS_DIR/joint_bpe --vocabulary $PREPROCESS_DIR/vocab.$LANG --vocabulary-threshold 50
 }
 
 postprocess_pred() {
@@ -34,10 +37,6 @@ postprocess_pred() {
   perl $MOSES_DIR/scripts/tokenizer/detokenizer.perl -l $LANG
 }
 
-#Select test set, preprocess src and translate
-EVALUATE_DIR=$SCRIPT_DIR/data/$LANG_SRC'2'$LANG_TGT/evaluate/
-mkdir -p $EVALUATE_DIR
-
 #Preprocess TEST_SRC
 TEST_SRC_BPE=$(mktemp)
 preprocess_src $TEST_SRC $LANG_SRC > $TEST_SRC_BPE
@@ -47,10 +46,10 @@ echo "Translate..."
 PREDS_BPE=$(mktemp)
 ONMT_DIR=$SCRIPT_DIR/tools/OpenNMT-py
 python $ONMT_DIR/translate.py -model $MODEL_CHECKPOINT \
-                                -src $TEST_SRC_BPE \
-                                -output $PREDS_BPE \
-				                        -verbose -replace_unk \
-#                           -gpu 1
+                              -src $TEST_SRC_BPE \
+                              -output $PREDS_BPE \
+				              -verbose -replace_unk \
+                              -gpu 0
 
 #Postprocess predictions
 postprocess_pred $PREDS_BPE $LANG_TGT > $EVALUATE_DIR/$(basename $MODEL_CHECKPOINT).preds.$LANG_TGT
