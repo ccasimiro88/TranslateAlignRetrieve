@@ -6,12 +6,11 @@ source $ENV_DIR/bin/activate
 
 LANG_SRC=$1
 LANG_TGT=$2
+
 TRANSLATION_DIR=${LANG_SRC}"2"${LANG_TGT}
 PREPROCESS_DIR=${SCRIPT_DIR}/data/$TRANSLATION_DIR/preprocess
-TRAIN_DIR=${SCRIPT_DIR}/data/$TRANSLATION_DIR/train
-TENSORBOARD_LOG_DIR=$TRAIN_DIR/tensorboard
+TRAIN_DIR=${SCRIPT_DIR}/data/$TRANSLATION_DIR/train/standard
 mkdir -p $TRAIN_DIR
-mkdir -p $TENSORBOARD_LOG_DIR
 
 
 ONMT_DIR=${SCRIPT_DIR}/tools/OpenNMT-py
@@ -25,14 +24,13 @@ echo "Prepare data for training..."
 # Prepare parallel data with shared vocabulary
 python $ONMT_DIR/preprocess.py -train_src $TRAIN_SRC -train_tgt $TRAIN_TGT \
 	   -valid_src $VALID_SRC -valid_tgt $VALID_TGT \
-	   -share_vocab \
-	   -save_data $TRAIN_DIR/"$TRANSLATION_DIR"_transformer_shared_vocab_embs \
+	   -save_data $TRAIN_DIR/"$TRANSLATION_DIR"_transformer \
 	   -log_file $TRAIN_DIR/log_train
 
 #Train Transformer with shared vocab and embeddings
-echo "Train transformer with shared vocab and embeddings..."
-python $ONMT_DIR/train.py -data $TRAIN_DIR/"$TRANSLATION_DIR"_transformer_shared_vocab_embs \
-       -save_model $TRAIN_DIR/"$TRANSLATION_DIR"_transformer_shared_vocab_embs \
+echo "Train transformer..."
+python $ONMT_DIR/train.py -data $TRAIN_DIR/"$TRANSLATION_DIR"_transformer \
+       -save_model $TRAIN_DIR/"$TRANSLATION_DIR"_transformer \
        -layers 6 -rnn_size 512 -word_vec_size 512 -transformer_ff 2048 -heads 8  \
        -encoder_type transformer -decoder_type transformer -position_encoding \
        -train_steps 100000  -max_generator_batches 2 -dropout 0.1 \
@@ -41,8 +39,7 @@ python $ONMT_DIR/train.py -data $TRAIN_DIR/"$TRANSLATION_DIR"_transformer_shared
        -max_grad_norm 0 -param_init 0  -param_init_glorot \
        -label_smoothing 0.1 -valid_steps 10000 --valid_batch_size 16 \
        -report_every 100 -save_checkpoint_steps 10000 \
-       -world_size 2 -gpu_ranks 0 1  \
-       -share_embeddings \
+       -world_size 2 -gpu_ranks 0 1 \
        -log_file $TRAIN_DIR/log_train
 
 

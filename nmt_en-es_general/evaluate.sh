@@ -48,7 +48,7 @@ ONMT_DIR=$SCRIPT_DIR/tools/OpenNMT-py
 python $ONMT_DIR/translate.py -model $MODEL_CHECKPOINT \
                               -src $TEST_SRC_BPE \
                               -output $PREDS_BPE \
-				              -verbose -replace_unk \
+			      -verbose -replace_unk \
                               -gpu 0
 
 #Postprocess predictions

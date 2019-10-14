@@ -1,6 +1,6 @@
 #!/bin/bash
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ENV_DIR=/home/casimiro/projects/hutoma/nmt_en-es_general/env
+ENV_DIR=$SCRIPT_DIR/env
 source $ENV_DIR/bin/activate
 
 export LC_ALL=en_US.UTF-8
@@ -13,9 +13,9 @@ TRANSLATE_DIR=$SCRIPT_DIR/data/en2es/translate
 mkdir -p $TRANSLATE_DIR
 
 #Preprocess functions
-PREPROCESS_DIR=$SCRIPT_DIR/data/en2es/preprocess
-MOSES_DIR=/home/casimiro/projects/hutoma/nmt_en-es_general/tools/mosesdecoder
-SUBWORDNMT_DIR=/home/casimiro/projects/hutoma/nmt_en-es_general/tools/subword-nmt
+TRANSLATION_DIR=$LANG_SRC'2'$LANG_TGT
+PREPROCESS_DIR=$SCRIPT_DIR/data/$TRANSLATION_DIR/preprocess
+MOSES_DIR=$SCRIPT_DIR/tools/mosesdecoder
 
 preprocess_src() {
   INPUT_FILE=$1
@@ -25,7 +25,7 @@ preprocess_src() {
   perl $MOSES_DIR/scripts/tokenizer/normalize-punctuation.perl -l $LANG |
   perl $MOSES_DIR/scripts/tokenizer/tokenizer.perl -l $LANG -no-escape |
   perl $MOSES_DIR/scripts/recaser/truecase.perl --model $PREPROCESS_DIR/truecase-model.en |
-  python $SUBWORDNMT_DIR/subword_nmt/apply_bpe.py -c $PREPROCESS_DIR/joint_bpe --vocabulary $PREPROCESS_DIR/vocab.en --vocabulary-threshold 50
+  subword-nmt apply-bpe -c $PREPROCESS_DIR/joint_bpe --vocabulary $PREPROCESS_DIR/vocab.en --vocabulary-threshold 50
 }
 
 postprocess_pred() {
@@ -60,13 +60,12 @@ else
 fi
 
 PREDS_BPE=$(mktemp)
-ONMT_DIR=/home/casimiro/projects/hutoma/nmt_en-es_general/tools/OpenNMT-py
+ONMT_DIR=$SCRIPT_DIR/tools/OpenNMT-py
 python $ONMT_DIR/translate.py \
        -model $MODEL_CHECKPOINT \
        -src $TEST_SRC_BPE \
        -output $PREDS_BPE \
-  	   -verbose -replace_unk \
-       -gpu 0 \
+  	   -verbose -replace_unk
 
 #Postprocess predictions
 postprocess_pred $PREDS_BPE $LANG_TGT > \
