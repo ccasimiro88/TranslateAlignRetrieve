@@ -24,12 +24,12 @@ EFLOMAL_DIR=$TOOLS_DIR/eflomal
 git clone https://github.com/robertostling/eflomal.git $TOOLS_DIR/eflomal
 cd $EFLOMAL_DIR
 make
-sudo make install
-python setup.py install
+make install
+pip install .
 cd $SCRIPT_DIR
 
 # FastAlign: 'https://github.com/clab/fast_align.git'
-sudo apt-get install libgoogle-perftools-dev libsparsehash-dev
+apt-get install libgoogle-perftools-dev libsparsehash-dev
 
 FASTALIGN_DIR=$TOOLS_DIR/fast_align
 git clone https://github.com/clab/fast_align.git $FASTALIGN_DIR

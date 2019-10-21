@@ -48,8 +48,7 @@ ONMT_DIR=$SCRIPT_DIR/tools/OpenNMT-py
 python $ONMT_DIR/translate.py -model $MODEL_CHECKPOINT \
                               -src $TEST_SRC_BPE \
                               -output $PREDS_BPE \
-			      -verbose -replace_unk \
-                              -gpu 0
+			      -verbose -replace_unk -gpu 0
 
 #Postprocess predictions
 postprocess_pred $PREDS_BPE $LANG_TGT > $EVALUATE_DIR/$(basename $MODEL_CHECKPOINT).preds.$LANG_TGT
@@ -61,7 +60,7 @@ BLEU_SCORE_DETOK=$(perl $MOSES_DIR/scripts/generic/multi-bleu-detok.perl -lc $TE
 		   | sed 's/,/\n/' | head -n 1 | grep -oP '[\d]{1,3}\.[\d]{2}+')
 
 echo BLEU_SCORE_DETOK = $BLEU_SCORE_DETOK, MODEL = $(basename $MODEL_CHECKPOINT), TESTSET = $(realpath $TEST_SRC) \
-                        | tee -a $EVALUATE_DIR/bleu
+                        | tee -a $EVALUATE_DIR/en2es_transformer_bleu
 
 rm $PREDS_BPE $TEST_SRC_BPE
 

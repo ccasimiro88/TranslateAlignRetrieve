@@ -78,15 +78,14 @@ class SquadTranslator:
                        for answer in qa['answers']
                        if answer['text']]
 
-            # extract plausible answers they exist
-            try:
-                plausible_answers = [answer['text']
-                                     for data in tqdm(content['data'])
-                                     for paragraph in tqdm(data['paragraphs'])
-                                     for qa in paragraph['qas']
-                                     for answer in qa['plausible_answers']]
-            except KeyError:
-                plausible_answers = []
+            # extract plausible answers when 'is_impossible == True'
+            plausible_answers = []
+            for data in tqdm(content['data']):
+                for paragraph in tqdm(data['paragraphs']):
+                    for qa in paragraph['qas']:
+                        if qa['is_impossible']:
+                            for answer in qa['plausible_answers']:
+                                plausible_answers.append(answer['text'])
 
             # Translate contexts, questions and answers all together and write to file.
             # Also remove duplicates before to translate with set
@@ -97,10 +96,6 @@ class SquadTranslator:
                 # Translate chunks of maximum size 100000 to avoid out-of-memory error
                 content = list(set(titles + context_sentences + questions + answers + plausible_answers))
                 content_translated = utils.translate_script(content, self.output_dir, self.batch_size)
-                # max_size_chunk = 100000
-                # content_translated = []
-                # for content_chunk in utils.get_chunks(content, max_size_chunk):
-                #     content_translated.append(utils.translate_script(content_chunk, self.output_dir))
 
             # Compute alignments
             context_sentence_questions_answers_alignments = \
@@ -163,21 +158,21 @@ class SquadTranslator:
                     question_translated = self.content_translated_alignment[question]['translation']
                     qa['question'] = question_translated
 
-                    for answer in tqdm(qa['answers']):
-                        answer_translated = self.content_translated_alignment[answer['text']]['translation']
+                    # Translate normal answers
+                    if not qa['is_impossible']:
+                        for answer in tqdm(qa['answers']):
+                            answer_translated = self.content_translated_alignment[answer['text']]['translation']
+                            answer_translated, answer_translated_start = \
+                                utils.extract_answer_translated(answer,
+                                                                answer_translated,
+                                                                context_translated,
+                                                                context_alignment_char,
+                                                                self.retrieve_answers_from_alignment)
+                            answer['text'] = answer_translated
+                            answer['answer_start'] = answer_translated_start
 
-                        answer_translated, answer_translated_start = \
-                            utils.extract_answer_translated(answer,
-                                                            answer_translated,
-                                                            context_translated,
-                                                            context_alignment_char,
-                                                            self.retrieve_answers_from_alignment)
-
-                        answer['text'] = answer_translated
-                        answer['answer_start'] = answer_translated_start
-
-                    # Translate plausible answers if they exist
-                    try:
+                    elif qa['is_impossible']:
+                        # Translate plausible answers
                         for plausible_answer in tqdm(qa['plausible_answers']):
                             plausible_answer_translated = \
                                 self.content_translated_alignment[plausible_answer['text']]['translation']
@@ -189,8 +184,6 @@ class SquadTranslator:
                                                                 self.retrieve_answers_from_alignment)
                             plausible_answer['text'] = answer_translated
                             plausible_answer['answer_start'] = answer_translated_start
-                    except KeyError:
-                        pass
 
         print('Cleaning...')
         # Clean translated content from empty answers and wrong translations
