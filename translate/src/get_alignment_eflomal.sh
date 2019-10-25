@@ -32,7 +32,18 @@ FWD_ALIGN=$(mktemp)
 REV_ALIGN=$(mktemp)
 SYM_ALIGN=$(mktemp)
 
-python ${EFLOMAL_DIR}/align.py -s ${FILE_SRC} -t ${FILE_TGT} --model 3 -f ${FWD_ALIGN} -r ${REV_ALIGN} -v --overwrite
+#python ${EFLOMAL_DIR}/align.py \
+#    -s <(tokenize ${FILE_SRC} ${LANG_SRC}) \
+#    -t <(tokenize ${FILE_TGT} ${LANG_TGT}) \
+#    --model 3 -f ${FWD_ALIGN} \
+#    -r ${REV_ALIGN} -v --overwrite
+
+python ${EFLOMAL_DIR}/align.py \
+    -s ${FILE_SRC} \
+    -t ${FILE_TGT} \
+    --model 3 -f ${FWD_ALIGN} \
+    -r ${REV_ALIGN} -v --overwrite
+
 
 echo "Symmetrize alignments..."
 ${FASTALIGN_DIR}/build/atools -c grow-diag-final-and -i ${FWD_ALIGN} -j ${REV_ALIGN} > ${SYM_ALIGN}

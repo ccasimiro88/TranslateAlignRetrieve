@@ -3,11 +3,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ENV_DIR=${SCRIPT_DIR}/env/bin
 source $ENV_DIR/activate
 
-MODEL_CHECKPOINT=$1
-TEST_SRC=$2
-LANG_SRC=$3
-TEST_TGT=$4
-LANG_TGT=$5
+TEST_SRC=$1
+LANG_SRC=$2
+TEST_TGT=$3
+LANG_TGT=$4
+MODEL_CHECKPOINT=$5
 
 #Preprocess functions
 TRANSLATION_DIR=$LANG_SRC'2'$LANG_TGT
@@ -48,7 +48,8 @@ ONMT_DIR=$SCRIPT_DIR/tools/OpenNMT-py
 python $ONMT_DIR/translate.py -model $MODEL_CHECKPOINT \
                               -src $TEST_SRC_BPE \
                               -output $PREDS_BPE \
-			      -verbose -replace_unk -gpu 0
+			                  -verbose -replace_unk \
+			                  -gpu 0
 
 #Postprocess predictions
 postprocess_pred $PREDS_BPE $LANG_TGT > $EVALUATE_DIR/$(basename $MODEL_CHECKPOINT).preds.$LANG_TGT

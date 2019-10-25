@@ -171,7 +171,7 @@ class SquadTranslator:
                             answer['text'] = answer_translated
                             answer['answer_start'] = answer_translated_start
 
-                    elif qa['is_impossible']:
+                    else:
                         # Translate plausible answers
                         for plausible_answer in tqdm(qa['plausible_answers']):
                             plausible_answer_translated = \
@@ -186,9 +186,8 @@ class SquadTranslator:
                             plausible_answer['answer_start'] = answer_translated_start
 
         print('Cleaning...')
-        # Clean translated content from empty answers and wrong translations
-        # Parse the file and create a cleaned copy searching for the correct retrieved answers
-        # and translated question
+        # Clean translated content from empty answers
+        # Parse the file and create a cleaned copy
         content_translated = content
         content_cleaned = {'version': content['version'], 'data': []}
         count_total_examples = 0
@@ -199,55 +198,51 @@ class SquadTranslator:
             for par in tqdm(data['paragraphs']):
                 qas_cleaned = []
                 for idx_qa, qa in tqdm(enumerate(par['qas'])):
-                    # check for correctly translated questions and add it to the clean content
                     question = qa['question']
-                    if utils.check_correct_target_language(question, self.lang_target):
-                        # further check if correctly translated answers and plausible answers exist
-                        try:
-                            correct_answers = [a for a in qa['answers']
-                                               if a['text']]
-                        except KeyError:
-                            correct_answers = []
-                        if plausible_answer:
-                            try:
-                                correct_plausible_answers = [pa for pa in qa['plausible_answers']
-                                                             if pa['text']]
-                            except KeyError:
-                                correct_plausible_answers = []
-                        # add data to content cleaned
-                        # answers
-                        if correct_answers:
-                            content_qas_id = qa['id']
-                            content_qas_is_impossible = qa['is_impossible']
-                            correct_answers_from_context = []
-                            for a in qa['answers']:
-                                start = a['answer_start']
-                                correct_answers_from_context.append(
-                                    {'text': par['context'][start:start + len(a['text'])],
-                                     'answer_start': start})
-                            qa_cleaned = {'question': question,
-                                          'answers': correct_answers_from_context,
-                                          'id': content_qas_id,
-                                          'is_impossible': content_qas_is_impossible}
-                            qas_cleaned.append(qa_cleaned)
-                            count_correct_examples += 1
-                        if correct_plausible_answers and not correct_answers:
-                            content_qas_id = qa['id']
-                            content_qas_is_impossible = qa['is_impossible']
-                            correct_answers_from_context = []
-                            for a in qa['answers']:
-                                start = a['answer_start']
-                                correct_answers_from_context.append(
-                                    {'text': par['context'][start:start + len(a['text'])],
-                                     'answer_start': start})
-                            qa_cleaned = {'question': question,
-                                          'answers': correct_answers,
-                                          'plausible_answers': correct_plausible_answers,
-                                          'id': content_qas_id,
-                                          'is_impossible': content_qas_is_impossible}
-                            qas_cleaned.append(qa_cleaned)
-                            count_correct_examples += 1
+                    if not qa['is_impossible']:
+                        correct_answers = [a for a in qa['answers']
+                                           if a['text']]
+                        correct_plausible_answers = []
+                    else:
+                        correct_plausible_answers = [pa for pa in qa['plausible_answers']
+                                                     if pa['text']]
+                        correct_answers = []
+
+                    # add data to content cleaned
+                    # answers
+                    if correct_answers:
+                        content_qas_id = qa['id']
+                        content_qas_is_impossible = qa['is_impossible']
+                        correct_answers_from_context = []
+                        for a in qa['answers']:
+                            start = a['answer_start']
+                            correct_answers_from_context.append(
+                                {'text': par['context'][start:start + len(a['text'])],
+                                 'answer_start': start})
+                        qa_cleaned = {'question': question,
+                                      'answers': correct_answers_from_context,
+                                      'id': content_qas_id,
+                                      'is_impossible': content_qas_is_impossible}
+                        qas_cleaned.append(qa_cleaned)
+                        count_correct_examples += 1
+                    if correct_plausible_answers and not correct_answers:
+                        content_qas_id = qa['id']
+                        content_qas_is_impossible = qa['is_impossible']
+                        correct_answers_from_context = []
+                        for a in qa['answers']:
+                            start = a['answer_start']
+                            correct_answers_from_context.append(
+                                {'text': par['context'][start:start + len(a['text'])],
+                                 'answer_start': start})
+                        qa_cleaned = {'question': question,
+                                      'answers': correct_answers,
+                                      'plausible_answers': correct_plausible_answers,
+                                      'id': content_qas_id,
+                                      'is_impossible': content_qas_is_impossible}
+                        qas_cleaned.append(qa_cleaned)
+                        count_correct_examples += 1
                     count_total_examples += 1
+
                 # Add the paragraph only if there are non-empty question-answer examples inside
                 if qas_cleaned:
                     content_context = par['context']

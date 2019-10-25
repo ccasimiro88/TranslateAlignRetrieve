@@ -6,6 +6,7 @@ import os
 import tempfile
 from sacremoses import MosesTokenizer, MosesDetokenizer
 import fasttext
+from collections import defaultdict
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 
@@ -26,7 +27,6 @@ def check_correct_target_language(text, target_language):
     return label_language.endswith(target_language)
 
 
-
 def tokenize(text, lang):
     if lang == 'en':
         text_tok = tokenizer_en.tokenize(text, return_str=True, escape=False)
@@ -36,7 +36,7 @@ def tokenize(text, lang):
         return text_tok
 
 
-def detokenize(text, lang):
+def de_tokenize(text, lang):
     if not isinstance(text, list):
         text = text.split()
 
@@ -46,6 +46,15 @@ def detokenize(text, lang):
     elif lang == 'es':
         text_detok = detokenizer_es.detokenize(text, return_str=True)
         return text_detok
+
+
+def post_process_translation(text):
+    text = text.strip()
+
+    # Add leading question mark when is missing (for Spanish)
+    if text.endswith('?'):
+        text = '¿' + text
+    return text
 
 
 # SQUAD paragraphs contains line breaks that we have to remove
@@ -96,12 +105,50 @@ def get_left_right_close_index(indexes_list, number, type):
         return number
 
 
+# Compute alignment between token indexes and white-spaced token indexes
+def tok_wstok_align(raw, tok):
+    tok2ws_tok = defaultdict(list)
+    ws_tok2tok = defaultdict(list)
+    ws_tokens = raw.split()
+    idx_wst = 0
+    merge_tok = ''
+    for idx_t, t in enumerate(tok.split()):
+        # import pdb; pdb.set_trace()
+        merge_tok += t
+        tok2ws_tok[idx_t] = idx_wst
+        if merge_tok == ws_tokens[idx_wst]:
+            idx_wst += 1
+            merge_tok = ''
+
+    for idx_t, idx_wst in tok2ws_tok.items():
+        ws_tok2tok[idx_wst].append(idx_t)
+    return dict(tok2ws_tok), dict(ws_tok2tok)
+
+
 # Convert a token-level alignment into a char-level alignment
-def get_src_tran_char_alignment(alignment, source, translation):
-    # TODO: compute src and target info in parallel
+def get_src_tran_char_alignment(alignment, source, translation, level='raw'):
     # First, extract map between token indexes and char indexes for both source and target
-    src_token_index = [int(src_tgt_idx.split('-')[0]) for src_tgt_idx in alignment.split()]
-    tran_token_index = [int(src_tran_idx.split('-')[1]) for src_tran_idx in alignment.split()]
+    # The raw level assumes the text is not tokenized
+    if level == 'raw':
+        src_token_index = [int(src_tgt_idx.split('-')[0])
+                           for src_tgt_idx in alignment.split()]
+        tran_token_index = [int(src_tran_idx.split('-')[1])
+                            for src_tran_idx in alignment.split()]
+
+    # The tokens level works on tokenized text. So, we first map the white-spaced token indexes to the token indexes
+    # and then compute the char indexes
+    elif level == 'tokens':
+        source_tok = tokenize(source, 'en')
+        tran_tok = tokenize(translation, 'es')
+
+        # Map from white-spaced token indexes to token indexes
+        source_tok2ws_tok, _ = tok_wstok_align(source, source_tok)
+        tran_tok2ws_tok, _ = tok_wstok_align(translation, tran_tok)
+
+        src_token_index = [source_tok2ws_tok[int(src_tgt_idx.split('-')[0])]
+                           for src_tgt_idx in alignment.split()]
+        tran_token_index = [tran_tok2ws_tok[int(src_tran_idx.split('-')[1])]
+                            for src_tran_idx in alignment.split()]
 
     src_token_index2char_index = {}
     for src_idx in src_token_index:
@@ -109,6 +156,7 @@ def get_src_tran_char_alignment(alignment, source, translation):
             src_token_index2char_index[src_idx] = 0
         elif src_idx > 0:
             src_token_index2char_index[src_idx] = len(' '.join(source.split()[:src_idx])) + 1
+
     tran_token_index2char_index = {}
     for tran_idx in tran_token_index:
         if tran_idx == 0:
@@ -153,27 +201,6 @@ def compute_context_alignment(sentence_alignments):
         # Convert to string
         context_alignment = ''.join(sentence_alignments).strip()
     return context_alignment
-
-
-# This function is a starting point to compute the alignment between
-# a raw text and a tokenized text at character level
-# TODO: finish the implementation and put it into utils file
-def get_text_text_tok_char_alignment(text, text_tok):
-    start = 0
-    for idx_tok, tok in enumerate(text_tok.split()):
-        if idx_tok == 0:
-            print('char-char_tok: {}-{}'.format(start))
-            print()
-            start += len(text.split()[0])
-        else:
-            if text.find(' {}'.format(tok), start) != -1:
-                start = text.find(' {}'.format(tok), start)
-            else:
-                start += len(text_tok.split()[idx_tok - 1]) + 1
-
-            print('start: {} , "{}"'.format(start, text[start:]))
-            print(tok, text.find(' {}'.format(tok), start))
-            print()
 
 
 # ANSWER EXTRACTION FROM CONTEXT
