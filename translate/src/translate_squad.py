@@ -1,7 +1,6 @@
 import json
 import time
 from nltk import sent_tokenize
-from sacremoses import MosesTokenizer, MosesDetokenizer
 import subprocess
 import csv
 from tqdm import tqdm
@@ -42,7 +41,7 @@ class SquadTranslator:
         # dictionary with context, question, answer as keys and their
         # translation/alignment as values
 
-    def translate_align_squad_content(self):
+    def translate_align_squad_content(self, tokenized):
 
         # Check is the content of SQUAD has been translated and aligned already
         context_sentences_translations_alignments_filename = \
@@ -104,7 +103,8 @@ class SquadTranslator:
                                                          content_translated,
                                                          self.lang_target,
                                                          self.alignment_type,
-                                                         self.output_dir)
+                                                         self.output_dir,
+                                                         tokenized)
             # Add translations and alignments
             for sentence, sentence_translated, alignment in zip(content,
                                                                 content_translated,
@@ -130,7 +130,7 @@ class SquadTranslator:
     # 2) If the previous two steps fail, optionally extract the answer from the context translated
     # using the answer start and answer end provided by the alignment
     # TODO: clean the SQUAD datasets during translation to avoid run twice over the content
-    def create_translated_squad(self):
+    def create_translated_squad(self, tokenized):
 
         with open(self.squad_file) as fn:
             content = json.load(fn)
@@ -151,7 +151,8 @@ class SquadTranslator:
                 paragraphs['context'] = context_translated
                 context_alignment_char = utils.get_src_tran_char_alignment(context_alignment,
                                                                            context,
-                                                                           context_translated)
+                                                                           context_translated,
+                                                                           tokenized)
 
                 for qa in tqdm(paragraphs['qas']):
                     question = qa['question']
@@ -276,6 +277,7 @@ if __name__ == "__main__":
                         help='retrieve translated answers only from the alignment')
     parser.add_argument('-use_translation_service', action='store_true', help='use a given translation service')
     parser.add_argument('-alignment_type', type=str, default='forward', help='use a given translation service')
+    parser.add_argument('-alignment_tokenized', action='store_true', help='Compute alignment on tokenized text')
     parser.add_argument('-batch_size', type=int, default='32', help='batch_size for the translation script '
                                                                     '(change this value in case of CUDA out-of-memory')
     args = parser.parse_args()
@@ -296,10 +298,10 @@ if __name__ == "__main__":
                                  args.batch_size)
 
     print('Translate SQUAD textual content and compute alignments...')
-    translator.translate_align_squad_content()
+    translator.translate_align_squad_content(args.alignment_tokenized)
 
     print('Create translated SQUAD...')
-    translator.create_translated_squad()
+    translator.create_translated_squad(args.alignment_tokenized)
 
     end = time.time()
     print('Total execution time: {}'.format(end - start))

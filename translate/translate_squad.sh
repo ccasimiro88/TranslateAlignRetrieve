@@ -15,12 +15,5 @@ python src/translate_squad.py \
        -lang_target ${LANG_TGT} \
        -output_dir ${OUTPUT_DIR} \
        -retrieve_answers_from_alignment \
+#       -alignment_tokenized \
        ${BATCH_SIZE}
-
-python src/translate_squad.py \
-       -squad_file  ${SQUAD_FILE} \
-       -lang_source ${LANG_SRC} \
-       -lang_target ${LANG_TGT} \
-       -output_dir ${OUTPUT_DIR} \
-       ${BATCH_SIZE}
-
