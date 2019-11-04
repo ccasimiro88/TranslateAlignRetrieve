@@ -7,6 +7,7 @@ import tempfile
 from sacremoses import MosesTokenizer, MosesDetokenizer
 import fasttext
 from collections import defaultdict
+from nltk import sent_tokenize
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 
@@ -67,12 +68,23 @@ def remove_trailing_punct(text):
 
 
 # ALIGNMENT INDEX MANIPULATION
-# Shift index by a given amount in a give direction
-def shift_index(index, shift, direction='left'):
-    if direction == 'left' and index - shift > 0:
-        return index - shift
+# Shift index in an alignment by a given amount in a give direction
+def shift_value_index_alignment(value_index, alignment, direction='right'):
+    # Remove duplicates while keeping the order of occurrence
+    value_indexes = sorted(set(alignment.values()),
+                           key=list(alignment.values()).index)
+    if direction == 'right':
+        next_value_index = value_indexes.index(value_index) + 1
+        if next_value_index != len(value_indexes):
+            return value_indexes[next_value_index]
+        else:
+            return -1
     else:
-        return index
+        next_value_index = value_indexes.index(value_index) - 1
+        if next_value_index != 0:
+            return value_indexes[next_value_index]
+        else:
+            return 0
 
 
 # Get the closest left or right index in a list given a certain number
@@ -100,7 +112,8 @@ def get_left_right_close_index(indexes, number, type):
 
 
 # Compute alignment between token indexes and white-spaced token indexes
-def tok_wstok_align(raw, tok):
+# ws_token --> token
+def tok2ws_tok_alignment(raw, tok):
     tok2ws_tok = defaultdict(list)
     ws_tok2tok = defaultdict(list)
     ws_tokens = raw.split()
@@ -115,54 +128,69 @@ def tok_wstok_align(raw, tok):
 
     for idx_t, idx_wst in tok2ws_tok.items():
         ws_tok2tok[idx_wst].append(idx_t)
-    return dict(tok2ws_tok), dict(ws_tok2tok)
+
+    # For each key index take the minimum key value in order to compute a one-to-one mapping left-oriented
+    ws_tok2tok_min = {k: min(v) for k, v in ws_tok2tok.items()}
+    return dict(tok2ws_tok), dict(ws_tok2tok_min)
 
 
 # Convert a token-level alignment into a char-level alignment
-def get_src_tran_char_alignment(alignment, source, translation, tokenized=True):
-    # First, extract map between token indexes and char indexes for both source and target
-    # The tokens level works on tokenized text. So, we first map the white-spaced token indexes to the token indexes
-    # and then compute the char indexes
-    if tokenized:
+# Can be white-spaced tokens or normal tokens, the important thing is the one-to-one mapping
+def get_src_tran_char_alignment(alignment, source, translation, alignment_tokenized):
+
+    # If the alignment is tokenized, convert tok indexes to ws_tok indexes
+    if alignment_tokenized:
         source_tok = tokenize(source, 'en')
-        tran_tok = tokenize(translation, 'es')
+        translation_tok = tokenize(translation, 'es')
 
-        # Map from token indexes to white-spaced token indexes
-        source_tok2ws_tok, _ = tok_wstok_align(source, source_tok)
-        tran_tok2ws_tok, _ = tok_wstok_align(translation, tran_tok)
+        src_tok2tok_ws, _ = tok2ws_tok_alignment(source, source_tok)
+        tran_tok2tok_ws, _ = tok2ws_tok_alignment(translation, translation_tok)
 
-        src_token_index = [source_tok2ws_tok[int(src_tran_idx.split('-')[0])]
-                           for src_tran_idx in alignment.split()]
-        tran_token_index = [tran_tok2ws_tok[int(src_tran_idx.split('-')[1])]
+        src_token_index = [src_tok2tok_ws[int(src_tgt_idx.split('-')[0])]
+                           for src_tgt_idx in alignment.split()]
+        tran_token_index = [tran_tok2tok_ws[int(src_tran_idx.split('-')[1])]
                             for src_tran_idx in alignment.split()]
 
-    # The raw level assumes the tokens consist of white-spaced words
+    # otherwise, use the ws_tok indexes
     else:
         src_token_index = [int(src_tgt_idx.split('-')[0])
                            for src_tgt_idx in alignment.split()]
         tran_token_index = [int(src_tran_idx.split('-')[1])
                             for src_tran_idx in alignment.split()]
 
-    # Get token index to char index translation map for both source and target
-    # Can be white-spaced tokens or normal tokens
-    src_token_index2char_index = {}
+    src_token2char = dict()
     for src_idx in src_token_index:
         if src_idx == 0:
-            src_token_index2char_index[src_idx] = 0
+            src_token2char[src_idx] = 0
         elif src_idx > 0:
-            src_token_index2char_index[src_idx] = len(' '.join(source.split()[:src_idx])) + 1
-
-    tran_token_index2char_index = {}
+            src_token2char[src_idx] = len(' '.join(source.split()[:src_idx])) + 1
+    tran_token2char = dict()
     for tran_idx in tran_token_index:
         if tran_idx == 0:
-            tran_token_index2char_index[tran_idx] = 0
+            tran_token2char[tran_idx] = 0
         elif tran_idx > 0:
-            tran_token_index2char_index[tran_idx] = len(' '.join(translation.split()[:tran_idx])) + 1
+            tran_token2char[tran_idx] = len(' '.join(translation.split()[:tran_idx])) + 1
 
-    # Then, use the previous maps to create the final src-tgt char alignment
-    src_tran_char_alignment = {src_token_index2char_index[src_tok_idx]: tran_token_index2char_index[tran_tok_idx]
-                               for src_tok_idx, tran_tok_idx in zip(src_token_index, tran_token_index)}
-    return src_tran_char_alignment
+    # Get token index to char index translation map for both source and target
+    # TODO: convert src-tran alignment to one-to-one mapping
+    src_tran_char_alignment = defaultdict(list)
+    for src_tok_idx, tran_tok_idx in zip(src_token_index, tran_token_index):
+        src_tran_char_alignment[src_token2char[src_tok_idx]].append(tran_token2char[tran_tok_idx])
+
+    # Define a one-to-one mapping left-oriented
+    # First, for each key index take the minimum key value
+    src_tran_alignment_char_min_tran_index = {k: min(v) for k, v in src_tran_char_alignment.items()}
+
+    # # Then, for each value take the minimum key index
+    # src_tran_alignment_char_min_tran_index = dict()
+    # seen_values = []
+    # for k, v in src_tran_char_alignment.items():
+    #     if v in seen_values:
+    #         continue
+    #     else:
+    #         seen_values.append(v)
+    #         src_tran_alignment_char_min_tran_index[k] = v
+    return src_tran_alignment_char_min_tran_index
 
 
 # Convert a set of sentence alignments into one document alignment
@@ -199,113 +227,50 @@ def compute_context_alignment(sentence_alignments):
 
 
 # ANSWER EXTRACTION FROM CONTEXT
-# This function compute the span of the answer translated based on
-# how many words are present in the original answer
-def length_based_answer_extraction(start_index, next_start_index, original_answer, alignment_indexes):
-    def get_indexes_in_between_range(start_index, next_start_index):
-        return len(set([i for i in alignment_indexes if i >= start_index]).intersection(
-            set([i for i in alignment_indexes if i < next_start_index])))
-
-    if isinstance(alignment_indexes, list) and alignment_indexes:
-        answer_word_length = len(original_answer.split())
-        span_word_length = get_indexes_in_between_range(start_index, next_start_index)
-        shift = answer_word_length - span_word_length
-        # Shift to the index to the next items in the alignment translation indexes
-        try:
-            # Enlarge or reduce the span on the ordered indexes
-            start_index = min(start_index, next_start_index)
-            next_start_index = max(start_index, next_start_index)
-            next_start_span = alignment_indexes[alignment_indexes.index(next_start_index) + shift]
-            return next_start_span
-        except IndexError:
-            return next_start_index
-    else:
-        return next_start_index
-
-
 # This function extract the answer translated from the context translated only using context alignment.
 # A series of heuristics are applied in order to extract the answer
-def extract_answer_translated_from_alignment(answer_text, answer_start, context_translated, context_alignment):
+def extract_answer_translated_from_alignment(answer_text, answer_start, context, context_translated, context_alignment):
     # Get the corresponding start and end char of the answer_translated in the
     # context translated and retrieve answer translated.
-
-    def extract_answer_from_start_next_start_indexes(start, next_start, context):
-        # the answer_translated is a span from the min to max char index (account for the inversion
-        # of words during translation)
-        start = min(start, next_start)
-        next_start = max(start, next_start)
-        ans = context[start: next_start].strip()
-        ans = remove_trailing_punct(ans)
-        return ans, start
-
     answer_next_start = answer_start + len(answer_text) + 1
-    answer_start = get_left_right_close_index(context_alignment.keys(), answer_start,
-                                              type='left')
+    answer_start = get_left_right_close_index(context_alignment.keys(), answer_start, type='left')
     answer_translated_start = context_alignment[answer_start]
 
-    # For the answer_next_start I'll try to use the left-close index (if it is different than the
-    # answer start) otherwise I use the right-close index
-    # Answer next start left close
-    answer_next_start = get_left_right_close_index(context_alignment.keys(), answer_next_start,
-                                                   type='left')
+    # For the answer_next_start I'll try to use the right-close index.
+    answer_next_start = get_left_right_close_index(context_alignment.keys(), answer_next_start, type='right')
+    answer_translated_next_start = context_alignment[answer_next_start]
 
-    if answer_next_start != answer_start:
-        answer_translated_next_start = context_alignment[answer_next_start]
+    # Order the start and next start index (account for the inversion of words during translation)
+    start, next_start = answer_translated_start, answer_translated_next_start
+    answer_translated_start = min(start, next_start)
+    answer_translated_next_start = max(start, next_start)
 
-        # Check it the retrieved start and next start indexes contain the same number of words in the answer.
-        # If not, shift the next start index to the right
-        answer_translated_next_start = length_based_answer_extraction(answer_translated_start,
-                                                                      answer_translated_next_start,
-                                                                      answer_text,
-                                                                      list(context_alignment.values()))
+    # Check if the answer_translated start and answer_translated_next_start are the same
+    # and if so move to the next right index
+    if answer_translated_next_start == answer_translated_start:
+        answer_translated_next_start = shift_value_index_alignment(answer_translated_next_start, context_alignment)
+        # If the maximum index is at the end of the alignment map, change its value to the last character
+        if answer_translated_next_start == -1:
+            answer_translated_next_start = len(context_translated)
 
-        # Extract answer translated from context translated with answer_start and answer_next_start
-        answer_translated, answer_translated_start = \
-            extract_answer_from_start_next_start_indexes(answer_translated_start,
-                                                         answer_translated_next_start,
-                                                         context_translated)
+    # Extract answer translated from context translated with answer_start and answer_next_start
+    # the answer_translated is a span from the min to max char index (
+    answer_translated = context_translated[answer_translated_start:answer_translated_next_start]
+    answer_translated = remove_trailing_punct(answer_translated)
 
-    # Answer next start right-close
-    elif answer_next_start <= answer_start:
-        # Check if there is a right-close value
-        if answer_next_start <= max(context_alignment.keys()):
-            answer_next_start = get_left_right_close_index(context_alignment.keys(), answer_next_start,
-                                                           type='right')
-            answer_translated_next_start = context_alignment[answer_next_start]
-
-            # Check it the retrieved start and next start indexes contain the same number of words in the answer.
-            # If not, shift the next start index to the right
-            answer_translated_next_start = length_based_answer_extraction(
-                answer_translated_start,
-                answer_translated_next_start,
-                answer_text,
-                list(context_alignment.values()))
-
-            # Extract answer translated from context translated with answer_start and answer_next_start
-            answer_translated, answer_translated_start = \
-                extract_answer_from_start_next_start_indexes(answer_translated_start,
-                                                             answer_translated_next_start,
-                                                             context_translated)
-
-        # No retrieved answer translated and answer translated index
-        else:
-            answer_translated = ''
-            answer_translated_start = -1
-    else:
-        answer_translated = ''
-        answer_translated_start = -1
-
-    # TODO: create a document-dependent filename to store the answer retrieved from alignment
-    # Write answers extracted from alignment to stdout for later check the accuracy
     print('ORIGINAL: {} | {}'.format(answer_text, answer_start))
     print('FROM ALIGNMENT: {} | {}\n'.format(answer_translated, answer_translated_start))
+    # DEBUG HERE
+    # answer_debug = 'Sicilian expedition'
+    # if answer_debug in answer_text:
+    #     import pdb;
+    #     pdb.set_trace()
 
     return answer_translated, answer_translated_start
 
 
 # This function extract the answer from a given context
-def extract_answer_translated(answer, answer_translated,
-                              context_translated, context_alignment,
+def extract_answer_translated(answer, answer_translated, context, context_translated, context_alignment,
                               retrieve_answers_from_alignment):
     # 1.1)
     # Match the answer_translated in the context_translated starting from the left-close char index
@@ -315,8 +280,8 @@ def extract_answer_translated(answer, answer_translated,
     answer_start = answer['answer_start']
 
     answer_start = get_left_right_close_index(list(context_alignment.keys()),
-                                                         answer_start,
-                                                         type='left')
+                                              answer_start,
+                                              type='left')
     try:
         answer_translated_start = context_alignment[answer_start]
     except KeyError:
@@ -326,11 +291,12 @@ def extract_answer_translated(answer, answer_translated,
     # the alignment is not precise enough (20 chars is more or less 2/3 words)
     # TODO: use regex match in order to take into account word boundaries and avoid substring match
     # within the words
+    shift_index = -20
     if context_translated.lower().find(answer_translated.lower(),
-                                       shift_index(answer_translated_start, 20)) != -1:
+                                       answer_translated_start + shift_index) != -1:
 
         answer_translated_start = context_translated.lower().find(answer_translated.lower(),
-                                                                  shift_index(answer_translated_start, 20))
+                                                                  answer_translated_start + shift_index)
         answer_translated_end = answer_translated_start + len(answer_translated)
         answer_translated = context_translated[answer_translated_start: answer_translated_end + 1]
         answer_translated = remove_trailing_punct(answer_translated)
@@ -350,7 +316,7 @@ def extract_answer_translated(answer, answer_translated,
         else:
             if retrieve_answers_from_alignment:
                 answer_translated, answer_translated_start = \
-                    extract_answer_translated_from_alignment(answer_text, answer_start,
+                    extract_answer_translated_from_alignment(answer_text, answer_start, context,
                                                              context_translated, context_alignment)
             else:
                 answer_translated = ''
@@ -413,10 +379,8 @@ def translate_script(source_sentences, output_dir, batch_size):
 def compute_efolmal_sentence_alignment(source_sentences, source_lang,
                                        translated_sentences, target_lang,
                                        alignment_type, output_dir,
-                                       tokenized):
-
-    # Tokenize text before to compute alignment
-    if tokenized:
+                                       alignment_tokenized):
+    if alignment_tokenized:
         source_sentences = [tokenize(s, source_lang) for s in source_sentences]
         translated_sentences = [tokenize(t, target_lang) for t in translated_sentences]
 
