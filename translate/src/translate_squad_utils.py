@@ -113,11 +113,9 @@ def get_left_right_close_index(indexes, number, type):
 
 # Compute alignment between character indexes and token indexes, and conversely
 def tok2char_map(text_raw, text_tok):
-    # First, compute the white-spaced token to token indexes map.
-    # By definition it is a one-to-many map but we convert it to a left-oriented one-to-one map
+    # First, compute the token to white-spaced token indexes map (many-to-one map)
     # tok --> ws_tok
     tok2ws_tok = dict()
-    # ws_tok2tok = defaultdict(list)
     ws_tokens = text_raw.split()
     idx_wst = 0
     merge_tok = ''
@@ -128,15 +126,7 @@ def tok2char_map(text_raw, text_tok):
             idx_wst += 1
             merge_tok = ''
 
-    # for idx_t, idx_wst in tok2ws_tok.items():
-    #     ws_tok2tok[idx_wst].append(idx_t)
-    #
-    # # For each key index take the minimum key value
-    # # in order to compute a one-to-one mapping left-oriented
-    # ws_tok2tok_left = {k: min(v)
-    #                    for k, v in ws_tok2tok.items()}
-
-    # Second, compute character to white-spaced token indexes map (one-to-one map):
+    # Second, compute white-spaced token to character indexes map (one-to-one map):
     # ws_tok  --> char
     ws_tok2char = dict()
     for ws_tok_idx, ws_tok in enumerate(text_raw.split()):
@@ -147,21 +137,11 @@ def tok2char_map(text_raw, text_tok):
             char_idx = len(' '.join(text_raw.split()[:ws_tok_idx])) + 1
             ws_tok2char[ws_tok_idx] = char_idx
 
-    # Finally, compute the character to token index map (one-to-one map):
-    # tok --> char
-    # char2tok = dict()
-    # for char_idx in char2ws_tok.keys():
-    #     char2tok[char_idx] = ws_tok2tok_left[char2ws_tok[char_idx]]
-
+    # Finally, compute the token to character map (one-to-one)
     tok2char = {tok_idx: ws_tok2char[tok2ws_tok[tok_idx]]
                 for tok_idx, _ in enumerate(text_tok.split())}
 
     return tok2char
-
-
-# This function compute a map between the token string and the token indexes
-def tok_str2token_index():
-    pass
 
 
 # Convert a token-level alignment into a char-level alignment
@@ -185,8 +165,7 @@ def get_src2tran_alignment_char(alignment, source, translation):
             src2tran_alignment_char[src_char_idx].append(tran_char_idx)
     except KeyError:
         pass
-    # Define a one-to-one mapping left-oriented
-    # For each key index take the minimum key value
+    # Define a one-to-one mapping left-oriented by keeping the minimum key value
     src_tran_alignment_char_min_tran_index = {k: min(v) for k, v in src2tran_alignment_char.items()}
 
     return src_tran_alignment_char_min_tran_index
@@ -298,8 +277,6 @@ def extract_answer_translated(answer, answer_translated, context, context_transl
     # Find answer_start in the translated context by looking close to the answer_translated_char_start
     # I am shifting the index by an additional 20 chars to the left in the case
     # the alignment is not precise enough (20 chars is more or less 2/3 words)
-    # TODO: use regex match in order to take into account word boundaries and avoid substring match
-    # within the words
     shift_index = -20
     if context_translated.lower().find(answer_translated.lower(),
                                        answer_translated_start + shift_index) != -1:
