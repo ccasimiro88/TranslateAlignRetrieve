@@ -133,7 +133,7 @@ class SquadTranslator:
     # 2) If the previous two steps fail, optionally extract the answer from the context translated
     # using the answer start and answer end provided by the alignment
     # TODO: clean the SQUAD datasets during translation to avoid run twice over the content
-    def create_translated_squad(self, tokenized):
+    def translate_squad(self, tokenized):
 
         with open(self.squad_file) as fn:
             content = json.load(fn)
@@ -147,17 +147,12 @@ class SquadTranslator:
                 context_sentences = [s for s in sent_tokenize(utils.remove_line_breaks(context), language='english')]
                 context_translated = ' '.join(self.content_translated_alignment[s]['translation']
                                               for s in context_sentences)
-                context_alignment = utils.compute_context_alignment(
+                context_alignment_tok = utils.compute_context_alignment(
                     [self.content_translated_alignment[s]['alignment']
                      for s in context_sentences])
 
                 # Translate context and replace its value back in the paragraphs
                 paragraphs['context'] = context_translated
-                context_alignment_char = utils.get_src_tran_char_alignment(context_alignment,
-                                                                           context,
-                                                                           context_translated,
-                                                                           alignment_tokenized=True)
-
                 for qa in tqdm(paragraphs['qas']):
                     question = qa['question']
                     question_translated = self.content_translated_alignment[question]['translation']
@@ -172,7 +167,7 @@ class SquadTranslator:
                                                                 answer_translated,
                                                                 context,
                                                                 context_translated,
-                                                                context_alignment_char,
+                                                                context_alignment_tok,
                                                                 self.retrieve_answers_from_alignment)
                             answer['text'] = answer_translated
                             answer['answer_start'] = answer_translated_start
@@ -186,7 +181,7 @@ class SquadTranslator:
                                                                 plausible_answer_translated,
                                                                 context,
                                                                 context_translated,
-                                                                context_alignment_char,
+                                                                context_alignment_tok,
                                                                 self.retrieve_answers_from_alignment)
                             plausible_answer['text'] = answer_translated
                             plausible_answer['answer_start'] = answer_translated_start
@@ -196,8 +191,8 @@ class SquadTranslator:
         # Parse the file and create a cleaned copy
         content_translated = content
         content_cleaned = {'version': content['version'], 'data': []}
-        count_total_examples = 0
-        count_correct_examples = 0
+        total_answers = 0
+        total_correct_answers = 0
         for idx_data, data in tqdm(enumerate(content_translated['data'])):
             content_title = content_translated['data'][idx_data]['title']
             content_cleaned['data'].append({'title': content_title, 'paragraphs': []})
@@ -206,12 +201,20 @@ class SquadTranslator:
                 for idx_qa, qa in tqdm(enumerate(par['qas'])):
                     question = qa['question']
                     if not qa['is_impossible']:
-                        correct_answers = [a for a in qa['answers']
-                                           if a['text']]
+                        correct_answers = []
+                        for a in qa['answers']:
+                            total_answers += 1
+                            if a['text']:
+                                total_correct_answers += 1
+                                correct_answers.append(a)
                         correct_plausible_answers = []
                     else:
-                        correct_plausible_answers = [pa for pa in qa['plausible_answers']
-                                                     if pa['text']]
+                        correct_plausible_answers = []
+                        for pa in qa['plausible_answers']:
+                            total_answers += 1
+                            if pa['text']:
+                                total_correct_answers += 1
+                                correct_plausible_answers.append(pa)
                         correct_answers = []
 
                     # add data to content cleaned
@@ -230,7 +233,6 @@ class SquadTranslator:
                                       'id': content_qas_id,
                                       'is_impossible': content_qas_is_impossible}
                         qas_cleaned.append(qa_cleaned)
-                        count_correct_examples += 1
                     if correct_plausible_answers and not correct_answers:
                         content_qas_id = qa['id']
                         content_qas_is_impossible = qa['is_impossible']
@@ -246,8 +248,6 @@ class SquadTranslator:
                                       'id': content_qas_id,
                                       'is_impossible': content_qas_is_impossible}
                         qas_cleaned.append(qa_cleaned)
-                        count_correct_examples += 1
-                    count_total_examples += 1
 
                 # Add the paragraph only if there are non-empty question-answer examples inside
                 if qas_cleaned:
@@ -267,8 +267,11 @@ class SquadTranslator:
         with open(content_translated_file, 'w') as fn:
             json.dump(content_cleaned, fn)
 
-        accuracy = round((count_correct_examples / count_total_examples) * 100, 2)
-        print('{}: No. of correct examples: {}%'.format(os.path.basename(content_translated_file), accuracy))
+        accuracy = round((total_correct_answers / total_answers) * 100, 2)
+        print('{}: Percentage of translated examples'
+              ' (correct answers/total answers): {}/{} = {}%'.format(os.path.basename(content_translated_file),
+                                                                     total_correct_answers, total_answers,
+                                                                     accuracy))
 
 
 if __name__ == "__main__":
@@ -306,7 +309,7 @@ if __name__ == "__main__":
     translator.translate_align_squad_content(args.alignment_tokenized)
 
     print('Create translated SQUAD...')
-    translator.create_translated_squad(args.alignment_tokenized)
+    translator.translate_squad(args.alignment_tokenized)
 
     end = time.time()
     print('Total execution time: {}'.format(end - start))
