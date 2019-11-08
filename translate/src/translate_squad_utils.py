@@ -12,28 +12,21 @@ from nltk import sent_tokenize
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 
 # PROCESSING TEXT
-tokenizer_en = MosesTokenizer(lang='en')
-detokenizer_en = MosesDetokenizer(lang='en')
-tokenizer_es = MosesTokenizer(lang='es')
-detokenizer_es = MosesDetokenizer(lang='es')
+tokenizer_en = MosesTokenizer(lang='english')
+detokenizer_en = MosesDetokenizer(lang='english')
+tokenizer_es = MosesTokenizer(lang='spanish')
+detokenizer_es = MosesDetokenizer(lang='spanish')
 
-# Check if target language for translations using FastText model
-FASTTEXT_LANG_DETECT_MODEL = SCRIPT_DIR + '/../data/fastText/lid.176.bin'
-langdetect = fasttext.load_model(FASTTEXT_LANG_DETECT_MODEL)
+MAX_NUM_TOKENS=50
+SPLIT_DELIMITER=','
+LANGUAGE_ISO_MAP={'en': 'english', 'es': 'spanish'}
 
-
-def check_correct_target_language(text, target_language):
-    prediction = langdetect.predict(text)
-    label_language = prediction[0][0]
-    return label_language.endswith(target_language)
-
-
-def tokenize(text, lang):
-    if lang == 'en':
-        text_tok = tokenizer_en.tokenize(text, return_str=True, escape=False)
+def tokenize(text, lang, return_str=True):
+    if lang == 'english':
+        text_tok = tokenizer_en.tokenize(text, return_str=return_str, escape=False)
         return text_tok
-    elif lang == 'es':
-        text_tok = tokenizer_es.tokenize(text, return_str=True, escape=False)
+    elif lang == 'spanish':
+        text_tok = tokenizer_es.tokenize(text, return_str=return_str, escape=False)
         return text_tok
 
 
@@ -47,6 +40,26 @@ def de_tokenize(text, lang):
     elif lang == 'es':
         text_detok = detokenizer_es.detokenize(text, return_str=True)
         return text_detok
+
+
+# Chunk sentences longer than a maximum number of words/tokens based on a delimiter character
+# Note that the delimiter can't be a trailing character
+def split_sentences(text, lang, delimiter=SPLIT_DELIMITER, max_size=MAX_NUM_TOKENS, tokenized=True):
+    text_len = len(tokenize(text, lang, return_str=True).split()) if tokenized else len(text.split())
+    if text_len >= max_size:
+        delimiter_match = delimiter + ' '
+        text_chunks = [chunk.strip() for chunk in text.split(delimiter_match) if chunk]
+        # Add the delimiter lost during chunking
+        text_chunks = [chunk+delimiter for chunk in text_chunks[:-1]] + [text_chunks[-1]]
+        return text_chunks
+    return [text]
+
+
+def tokenize_sentences(text, lang):
+    sentences = [chunk
+                 for sentence in sent_tokenize(text, lang)
+                 for chunk in split_sentences(sentence, lang)]
+    return sentences
 
 
 # SQUAD paragraphs contains line breaks that we have to remove
@@ -148,8 +161,8 @@ def tok2char_map(text_raw, text_tok):
 # Can be white-spaced tokens or normal tokens, the important thing is the one-to-one mapping
 def get_src2tran_alignment_char(alignment, source, translation):
 
-    source_tok = tokenize(source, 'en')
-    translation_tok = tokenize(translation, 'es')
+    source_tok = tokenize(source, 'english')
+    translation_tok = tokenize(translation, 'spanish')
     src_tok2char = tok2char_map(source, source_tok)
     tran_tok2char = tok2char_map(translation, translation_tok)
 
@@ -238,12 +251,16 @@ def extract_answer_translated_from_alignment(answer_text, answer_start, context,
         # Extract answer translated from context translated with answer_start and answer_next_start
         # the answer_translated is a span from the min to max char index (
         answer_translated = context_translated[answer_translated_start:answer_translated_next_start]
+
+        # Post-process the retrieved answer by removing parts of the following sentence
+        # and extra trailing punctuation
+        answer_translated = sent_tokenize(answer_translated, 'english')[0]
         answer_translated = remove_trailing_punct(answer_translated)
 
         print('Original: {} | {}'.format(answer_text, answer_start))
         print('From alignment: {} | {}\n'.format(answer_translated, answer_translated_start))
         # # DEBUG HERE
-        # answer_debug = '11th'
+        # answer_debug = 'Denmark, Iceland and Norway'
         # if answer_debug in answer_text:
         #     import pdb;
         #     pdb.set_trace()
@@ -318,9 +335,29 @@ def extract_answer_translated(answer, answer_translated, context, context_transl
 
 # TRANSLATING
 # Translate text via an OpenNMT-based web service
-# TODO: Later, put these variables in a config file
 ENTOES_TRANSLATION_SERVICE_URL = 'http://10.8.0.22:5100/translator/translate'
 MODEL_ID = 100
+PUNCTUATION = ['.', ',', '?', '!', '¿', '¡']
+
+# Remove extra punctuation when the translations come from a very short text
+def post_process_translation(source, translation, punkt=PUNCTUATION):
+    if source[0].isupper():
+        translation = translation[0].upper() + translation[1:]
+    if source[0].islower():
+        translation = translation[0].lower() + translation[1:]
+    if source[-1] == '.':
+        if translation[-1] in punkt:
+            translation = translation[:-1] + '.'
+        else:
+            translation += '.'
+    if source[-1] == ',':
+        if translation[-1] in punkt:
+            translation = translation[:-1] + ','
+        else:
+            translation += ','
+    if translation[0] in punkt:
+        translation = translation[1:]
+    return translation
 
 
 def translate(text, service_url=ENTOES_TRANSLATION_SERVICE_URL):
@@ -334,7 +371,6 @@ def translate(text, service_url=ENTOES_TRANSLATION_SERVICE_URL):
 
     # Get translation
     translation = get_translation(text)
-
     return translation
 
 
@@ -364,11 +400,10 @@ def translate_script(source_sentences, output_dir, batch_size):
 # Compute alignment between source and target sentences
 def compute_efolmal_sentence_alignment(source_sentences, source_lang,
                                        translated_sentences, target_lang,
-                                       alignment_type, output_dir,
-                                       alignment_tokenized):
-    if alignment_tokenized:
-        source_sentences = [tokenize(s, source_lang) for s in source_sentences]
-        translated_sentences = [tokenize(t, target_lang) for t in translated_sentences]
+                                       alignment_type, output_dir):
+
+    source_sentences = [tokenize(s, source_lang) for s in source_sentences]
+    translated_sentences = [tokenize(t, target_lang) for t in translated_sentences]
 
     source_filename = os.path.join(output_dir, 'source_align')
     with open(source_filename, 'w') as sf:
