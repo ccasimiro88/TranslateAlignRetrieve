@@ -12,10 +12,10 @@ from nltk import sent_tokenize
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 
 # PROCESSING TEXT
-tokenizer_en = MosesTokenizer(lang='english')
-detokenizer_en = MosesDetokenizer(lang='english')
-tokenizer_es = MosesTokenizer(lang='spanish')
-detokenizer_es = MosesDetokenizer(lang='spanish')
+tokenizer_en = MosesTokenizer(lang='en')
+detokenizer_en = MosesDetokenizer(lang='en')
+tokenizer_es = MosesTokenizer(lang='es')
+detokenizer_es = MosesDetokenizer(lang='es')
 
 MAX_NUM_TOKENS=50
 SPLIT_DELIMITER=','
@@ -34,10 +34,10 @@ def de_tokenize(text, lang):
     if not isinstance(text, list):
         text = text.split()
 
-    if lang == 'en':
+    if lang == 'english':
         text_detok = detokenizer_en.detokenize(text, return_str=True)
         return text_detok
-    elif lang == 'es':
+    elif lang == 'spanish':
         text_detok = detokenizer_es.detokenize(text, return_str=True)
         return text_detok
 
@@ -398,12 +398,11 @@ def translate_script(source_sentences, output_dir, batch_size):
 
 # COMPUTE ALIGNMENT
 # Compute alignment between source and target sentences
-def compute_efolmal_sentence_alignment(source_sentences, source_lang,
-                                       translated_sentences, target_lang,
-                                       alignment_type, output_dir):
+def compute_alignment(source_sentences, source_lang, translated_sentences, target_lang,
+                      alignment_type, output_dir):
 
-    source_sentences = [tokenize(s, source_lang) for s in source_sentences]
-    translated_sentences = [tokenize(t, target_lang) for t in translated_sentences]
+    source_sentences = [tokenize(sentence, source_lang) for sentence in source_sentences]
+    translated_sentences = [tokenize(sentence, target_lang) for sentence in translated_sentences]
 
     source_filename = os.path.join(output_dir, 'source_align')
     with open(source_filename, 'w') as sf:
@@ -414,12 +413,12 @@ def compute_efolmal_sentence_alignment(source_sentences, source_lang,
         tf.writelines('\n'.join(s for s in translated_sentences))
 
     alignment_filename = os.path.join(output_dir, 'alignment')
-    efolmal_cmd = SCRIPT_DIR + '/get_alignment_eflomal.sh {} {} {} {} {} {}'.format(source_filename,
-                                                                                    source_lang,
-                                                                                    translation_filename,
-                                                                                    target_lang,
-                                                                                    alignment_type,
-                                                                                    alignment_filename)
+    efolmal_cmd = SCRIPT_DIR + '/compute_alignment.sh {} {} {} {} {} {}'.format(source_filename,
+                                                                                   source_lang,
+                                                                                   translation_filename,
+                                                                                   target_lang,
+                                                                                   alignment_type,
+                                                                                   alignment_filename)
     subprocess.run(efolmal_cmd.split())
 
     with open(alignment_filename) as af:

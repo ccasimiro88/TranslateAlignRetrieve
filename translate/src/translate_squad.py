@@ -102,12 +102,12 @@ class SquadTranslator:
 
             # Compute alignments
             context_sentence_questions_answers_alignments = \
-                utils.compute_efolmal_sentence_alignment(content,
-                                                         self.lang_source,
-                                                         content_translated,
-                                                         self.lang_target,
-                                                         self.alignment_type,
-                                                         self.output_dir)
+                utils.compute_alignment(content,
+                                        self.lang_source,
+                                        content_translated,
+                                        self.lang_target,
+                                        self.alignment_type,
+                                        self.output_dir)
 
             # Add translations and alignments
             for sentence, sentence_translated, alignment in zip(content,
