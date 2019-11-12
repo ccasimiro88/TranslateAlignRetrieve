@@ -50,7 +50,7 @@ python ${EFLOMAL_DIR}/align.py \
         -v --overwrite
 
 echo "Symmetrize alignments..."
-${FASTALIGN_DIR}/build/atools
+${FASTALIGN_DIR}/build/atools \
     -c grow-diag-final-and \
     -i ${FWD_ALIGN} \
     -j ${REV_ALIGN} \

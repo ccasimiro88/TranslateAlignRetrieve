@@ -22,10 +22,10 @@ SPLIT_DELIMITER=','
 LANGUAGE_ISO_MAP={'en': 'english', 'es': 'spanish'}
 
 def tokenize(text, lang, return_str=True):
-    if lang == 'english':
+    if lang == 'en':
         text_tok = tokenizer_en.tokenize(text, return_str=return_str, escape=False)
         return text_tok
-    elif lang == 'spanish':
+    elif lang == 'es':
         text_tok = tokenizer_es.tokenize(text, return_str=return_str, escape=False)
         return text_tok
 
@@ -34,15 +34,17 @@ def de_tokenize(text, lang):
     if not isinstance(text, list):
         text = text.split()
 
-    if lang == 'english':
+    if lang == 'en':
         text_detok = detokenizer_en.detokenize(text, return_str=True)
         return text_detok
-    elif lang == 'spanish':
+    elif lang == 'es':
         text_detok = detokenizer_es.detokenize(text, return_str=True)
         return text_detok
 
 
-# Chunk sentences longer than a maximum number of words/tokens based on a delimiter character
+# Chunk sentences longer than a maximum number of words/tokens based on a delimiter character.
+# This option is used only for very long sentences to avoid shorter translation than the
+# original source length.
 # Note that the delimiter can't be a trailing character
 def split_sentences(text, lang, delimiter=SPLIT_DELIMITER, max_size=MAX_NUM_TOKENS, tokenized=True):
     text_len = len(tokenize(text, lang, return_str=True).split()) if tokenized else len(text.split())
@@ -57,7 +59,7 @@ def split_sentences(text, lang, delimiter=SPLIT_DELIMITER, max_size=MAX_NUM_TOKE
 
 def tokenize_sentences(text, lang):
     sentences = [chunk
-                 for sentence in sent_tokenize(text, lang)
+                 for sentence in sent_tokenize(text, LANGUAGE_ISO_MAP[lang])
                  for chunk in split_sentences(sentence, lang)]
     return sentences
 
@@ -161,8 +163,8 @@ def tok2char_map(text_raw, text_tok):
 # Can be white-spaced tokens or normal tokens, the important thing is the one-to-one mapping
 def get_src2tran_alignment_char(alignment, source, translation):
 
-    source_tok = tokenize(source, 'english')
-    translation_tok = tokenize(translation, 'spanish')
+    source_tok = tokenize(source, 'en')
+    translation_tok = tokenize(translation, 'es')
     src_tok2char = tok2char_map(source, source_tok)
     tran_tok2char = tok2char_map(translation, translation_tok)
 
@@ -259,11 +261,6 @@ def extract_answer_translated_from_alignment(answer_text, answer_start, context,
 
         print('Original: {} | {}'.format(answer_text, answer_start))
         print('From alignment: {} | {}\n'.format(answer_translated, answer_translated_start))
-        # # DEBUG HERE
-        # answer_debug = 'Denmark, Iceland and Norway'
-        # if answer_debug in answer_text:
-        #     import pdb;
-        #     pdb.set_trace()
     else:
         answer_translated = ''
         answer_translated_start = -1
@@ -334,48 +331,39 @@ def extract_answer_translated(answer, answer_translated, context, context_transl
 
 
 # TRANSLATING
-# Translate text via an OpenNMT-based web service
-ENTOES_TRANSLATION_SERVICE_URL = 'http://10.8.0.22:5100/translator/translate'
-MODEL_ID = 100
-PUNCTUATION = ['.', ',', '?', '!', '¿', '¡']
+# Translate text using the OpenNMT-py script
+PUNCTUATION = ['.', ',', '?', '!', '¿', '¡', ')', '(', ']', '[']
 
 # Remove extra punctuation when the translations come from a very short text
-def post_process_translation(source, translation, punkt=PUNCTUATION):
-    if source[0].isupper():
-        translation = translation[0].upper() + translation[1:]
-    if source[0].islower():
-        translation = translation[0].lower() + translation[1:]
-    if source[-1] == '.':
-        if translation[-1] in punkt:
-            translation = translation[:-1] + '.'
-        else:
-            translation += '.'
-    if source[-1] == ',':
-        if translation[-1] in punkt:
-            translation = translation[:-1] + ','
-        else:
-            translation += ','
-    if translation[0] in punkt:
-        translation = translation[1:]
-    return translation
-
-
-def translate(text, service_url=ENTOES_TRANSLATION_SERVICE_URL):
-    headers = {'Content-Type': 'application/json'}
-    data = [{"src": "", "id": MODEL_ID}]
-
-    def get_translation(text):
-        data[0]['src'] = text
-        response = requests.post(url=service_url, headers=headers, json=data)
-        return json.loads(response.text)[0][0]['tgt']
-
-    # Get translation
-    translation = get_translation(text)
-    return translation
+# Handle exceptions in case the translation in just one word length
+def post_process_translation(source, translation, punctuation=PUNCTUATION):
+    try:
+        # Avoid translations where the same token is repeated
+        if set(translation.split()) == translation.split()[0]:
+            translation = translation[0]
+        if source[0].isupper():
+            translation = translation[0].upper() + translation[1:]
+        if source[0].islower() and len(translation)>1:
+            translation = translation[0].lower() + translation[1:]
+        if source[-1] == '.':
+            if translation[-1] in punctuation:
+                translation = translation[:-1] + '.'
+            else:
+                translation += '.'
+        if source[-1] == ',':
+            if translation[-1] in punctuation:
+                translation = translation[:-1] + ','
+            else:
+                translation += ','
+        if translation[0] in punctuation and len(translation)>1:
+            translation = translation[1:]
+        return translation
+    except IndexError:
+        return translation
 
 
 # Translate via script
-def translate_script(source_sentences, output_dir, batch_size):
+def translate(source_sentences, output_dir, batch_size):
 
     source_filename = os.path.join(output_dir, 'source_translate')
     with open(source_filename, 'w') as sf:

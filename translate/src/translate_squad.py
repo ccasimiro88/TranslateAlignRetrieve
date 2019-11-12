@@ -9,6 +9,7 @@ import pickle
 import argparse
 import translate_squad_utils as utils
 from tqdm import tqdm
+import logging
 
 
 class SquadTranslator:
@@ -19,7 +20,7 @@ class SquadTranslator:
                  output_dir,
                  use_translation_service,
                  alignment_type,
-                 retrieve_answers_from_alignment,
+                 answers_from_alignment,
                  batch_size):
 
         self.squad_file = squad_file
@@ -28,7 +29,7 @@ class SquadTranslator:
         self.output_dir = output_dir
         self.use_translation_service = use_translation_service
         self.alignment_type = alignment_type
-        self.retrieve_answers_from_alignment = retrieve_answers_from_alignment
+        self.answers_from_alignment = answers_from_alignment
         self.batch_size = batch_size
 
         # initialize content_translated_alignments
@@ -88,7 +89,9 @@ class SquadTranslator:
             content = titles + context_sentences + questions + answers + plausible_answers
 
             # Remove duplicated while keeping the order of occurrence
-            content = sorted(set(content), key=content.index)
+            # content = sorted(set(content), key=content.index)
+            content = set(content)
+            print('Collected {} sentence to translate'.format(len(content)))
 
             # Translate contexts, questions and answers all together and write to file.
             # Also remove duplicates before to translate with set
@@ -96,18 +99,17 @@ class SquadTranslator:
                 content_translated = [utils.post_process_translation(sentence, utils.translate(sentence))
                                       for sentence in tqdm(content)]
             else:
-                content_translated = utils.translate_script(content, self.output_dir, self.batch_size)
+                content_translated = utils.translate(content, self.output_dir, self.batch_size)
                 content_translated = [utils.post_process_translation(sentence, sentence_translated)
                                       for sentence, sentence_translated in zip (content, content_translated)]
 
             # Compute alignments
-            context_sentence_questions_answers_alignments = \
-                utils.compute_alignment(content,
-                                        self.lang_source,
-                                        content_translated,
-                                        self.lang_target,
-                                        self.alignment_type,
-                                        self.output_dir)
+            context_sentence_questions_answers_alignments = utils.compute_alignment(content,
+                                                                                    self.lang_source,
+                                                                                    content_translated,
+                                                                                    self.lang_target,
+                                                                                    self.alignment_type,
+                                                                                    self.output_dir)
 
             # Add translations and alignments
             for sentence, sentence_translated, alignment in zip(content,
@@ -141,27 +143,28 @@ class SquadTranslator:
         for data in tqdm(content['data']):
             title = data['title']
             data['title'] = self.content_translated_alignment[title]['translation']
-            for paragraphs in tqdm(data['paragraphs']):
+            for paragraphs in data['paragraphs']:
                 context = paragraphs['context']
 
                 context_sentences = [s for s in utils.tokenize_sentences(utils.remove_line_breaks(context),
                                                                          lang=self.lang_source)]
+
                 context_translated = ' '.join(self.content_translated_alignment[s]['translation']
-                                                  for s in context_sentences)
+                                              for s in context_sentences)
                 context_alignment_tok = utils.compute_context_alignment(
                     [self.content_translated_alignment[s]['alignment']
                      for s in context_sentences])
 
                 # Translate context and replace its value back in the paragraphs
                 paragraphs['context'] = context_translated
-                for qa in tqdm(paragraphs['qas']):
+                for qa in paragraphs['qas']:
                     question = qa['question']
                     question_translated = self.content_translated_alignment[question]['translation']
                     qa['question'] = question_translated
 
                     # Translate normal answers
                     if not qa['is_impossible']:
-                        for answer in tqdm(qa['answers']):
+                        for answer in qa['answers']:
                             answer_translated = self.content_translated_alignment[answer['text']]['translation']
                             answer_translated, answer_translated_start = \
                                 utils.extract_answer_translated(answer,
@@ -169,13 +172,13 @@ class SquadTranslator:
                                                                 context,
                                                                 context_translated,
                                                                 context_alignment_tok,
-                                                                self.retrieve_answers_from_alignment)
+                                                                self.answers_from_alignment)
                             answer['text'] = answer_translated
                             answer['answer_start'] = answer_translated_start
 
                     else:
                         # Translate plausible answers
-                        for plausible_answer in tqdm(qa['plausible_answers']):
+                        for plausible_answer in qa['plausible_answers']:
                             plausible_answer_translated = self.content_translated_alignment[plausible_answer['text']]['translation']
                             answer_translated, answer_translated_start = \
                                 utils.extract_answer_translated(plausible_answer,
@@ -183,7 +186,7 @@ class SquadTranslator:
                                                                 context,
                                                                 context_translated,
                                                                 context_alignment_tok,
-                                                                self.retrieve_answers_from_alignment)
+                                                                self.answers_from_alignment)
                             plausible_answer['text'] = answer_translated
                             plausible_answer['answer_start'] = answer_translated_start
 
@@ -193,13 +196,14 @@ class SquadTranslator:
         content_translated = content
         content_cleaned = {'version': content['version'], 'data': []}
         total_answers = 0
+        total_correct_plausible_answers = 0
         total_correct_answers = 0
         for idx_data, data in tqdm(enumerate(content_translated['data'])):
             content_title = content_translated['data'][idx_data]['title']
             content_cleaned['data'].append({'title': content_title, 'paragraphs': []})
-            for par in tqdm(data['paragraphs']):
+            for par in data['paragraphs']:
                 qas_cleaned = []
-                for idx_qa, qa in tqdm(enumerate(par['qas'])):
+                for idx_qa, qa in enumerate(par['qas']):
                     question = qa['question']
                     if not qa['is_impossible']:
                         correct_answers = []
@@ -214,7 +218,7 @@ class SquadTranslator:
                         for pa in qa['plausible_answers']:
                             total_answers += 1
                             if pa['text']:
-                                total_correct_answers += 1
+                                total_correct_plausible_answers += 1
                                 correct_plausible_answers.append(pa)
                         correct_answers = []
 
@@ -257,10 +261,10 @@ class SquadTranslator:
                         {'context': content_context, 'qas': qas_cleaned})
 
         # Write the content back to the translated dataset
-        if self.retrieve_answers_from_alignment:
+        if self.answers_from_alignment:
             content_translated_file = os.path.join(self.output_dir,
                                                    os.path.basename(self.squad_file) +
-                                                   '_retrieve_answers_alignment.{}'.format(self.lang_target))
+                                                   '_answers_from_alignment.{}'.format(self.lang_target))
         else:
             content_translated_file = os.path.join(self.output_dir,
                                                    os.path.basename(self.squad_file) + '.{}'.format(self.lang_target))
@@ -268,10 +272,11 @@ class SquadTranslator:
         with open(content_translated_file, 'w') as fn:
             json.dump(content_cleaned, fn)
 
-        accuracy = round((total_correct_answers / total_answers) * 100, 2)
+        total_correct = total_correct_answers + total_correct_plausible_answers
+        accuracy = round((total_correct/ total_answers) * 100, 2)
         print('{}: Percentage of translated examples'
               ' (correct answers/total answers): {}/{} = {}%'.format(os.path.basename(content_translated_file),
-                                                                     total_correct_answers, total_answers,
+                                                                     total_correct, total_answers,
                                                                      accuracy))
 
 
@@ -282,7 +287,7 @@ if __name__ == "__main__":
     parser.add_argument('-lang_source', type=str, help='language of the SQUAD dataset to translate')
     parser.add_argument('-lang_target', type=str, help='translation language')
     parser.add_argument('-output_dir', type=str, help='directory where all the generated files are stored')
-    parser.add_argument('-retrieve_answers_from_alignment', action='store_true',
+    parser.add_argument('-answers_from_alignment', action='store_true',
                         help='retrieve translated answers only from the alignment')
     parser.add_argument('-use_translation_service', action='store_true', help='use a given translation service')
     parser.add_argument('-alignment_type', type=str, default='forward', help='use a given translation service')
@@ -302,7 +307,7 @@ if __name__ == "__main__":
                                  args.output_dir,
                                  args.use_translation_service,
                                  args.alignment_type,
-                                 args.retrieve_answers_from_alignment,
+                                 args.answers_from_alignment,
                                  args.batch_size)
 
     print('Translate SQUAD textual content and compute alignments...')

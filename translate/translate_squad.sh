@@ -7,11 +7,19 @@ SQUAD_FILE=$1
 LANG_SRC=$2
 LANG_TGT=$3
 OUTPUT_DIR=$4
-BATCH_SIZE=$5
+RETRIEVE_FROM_ALIGNMENT=$5
 
-python src/translate_squad.py \
-       -squad_file  ${SQUAD_FILE} \
-       -lang_source ${LANG_SRC} \
-       -lang_target ${LANG_TGT} \
-       -output_dir ${OUTPUT_DIR} \
-       -retrieve_answers_from_alignment
+if [[ -z "$5" ]]; then
+    python src/translate_squad.py \
+           -squad_file  ${SQUAD_FILE} \
+           -lang_source ${LANG_SRC} \
+           -lang_target ${LANG_TGT} \
+           -output_dir ${OUTPUT_DIR}
+else
+    python src/translate_squad.py \
+           -squad_file  ${SQUAD_FILE} \
+           -lang_source ${LANG_SRC} \
+           -lang_target ${LANG_TGT} \
+           -output_dir ${OUTPUT_DIR} \
+           ${RETRIEVE_FROM_ALIGNMENT}
+fi
