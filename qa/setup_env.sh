@@ -14,4 +14,5 @@ mkdir -p ${TOOLS_DIR}
 
 git clone https://github.com/huggingface/transformers.git ${TOOLS_DIR}/transformers
 pip install ${TOOLS_DIR}/transformers
-cd ${SCRIPT_DIR}
+
+git clone https://github.com/facebookresearch/MLQA.git ${TOOLS_DIR}/MLQA
