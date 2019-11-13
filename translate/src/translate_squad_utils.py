@@ -362,7 +362,7 @@ def post_process_translation(source, translation, punctuation=PUNCTUATION):
         return translation
 
 
-# Translate via script
+# Translate via the OpenNMT-py script
 def translate(source_sentences, output_dir, batch_size):
 
     source_filename = os.path.join(output_dir, 'source_translate')

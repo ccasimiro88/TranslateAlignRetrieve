@@ -40,8 +40,8 @@ preprocess_src $INPUT_SRC en > $TEST_SRC_BPE
 #Translate Transformer
 echo "Translate..."
 # Select the model
-echo "Using best model checkpoint:"
 MODEL_CHECKPOINT=$SCRIPT_DIR/../data/nmt/en2es/en2es_average_model.pt
+echo "Using best model checkpoint: ${MODEL_CHECKPOINT}"
 
 PREDS_BPE=$(mktemp)
 ONMT_DIR=$SCRIPT_DIR/../tools/OpenNMT-py

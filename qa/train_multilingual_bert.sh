@@ -16,7 +16,6 @@ python ${TRANSFORMERS_DIR}/examples/run_squad.py \
        --do_lower_case \
        --train_file ${TRAIN_FILE}\
        --predict_file "" \
-       --save_steps 10000 \
        --logging_steps 10000 \
        --version_2_with_negative \
        --overwrite_output_dir \
