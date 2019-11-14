@@ -237,14 +237,9 @@ def extract_answer_translated_from_alignment(answer_text, answer_start, context,
         answer_next_start = get_left_right_close_index(context_alignment.keys(), answer_next_start, type='right')
         answer_translated_next_start = context_alignment[answer_next_start]
 
-        # Order the start and next start index (account for the inversion of words during translation)
-        start, next_start = answer_translated_start, answer_translated_next_start
-        answer_translated_start = min(start, next_start)
-        answer_translated_next_start = max(start, next_start)
-
         # Check if the answer_translated start and answer_translated_next_start are the same
-        # and if so move to the next right index
-        if answer_translated_next_start == answer_translated_start:
+        # and if so move to the next right index (account for the inversion of words during translation)
+        while answer_translated_next_start <= answer_translated_start:
             answer_translated_next_start = shift_value_index_alignment(answer_translated_next_start, context_alignment)
             # If the maximum index is at the end of the alignment map, change its value to the last character
             if answer_translated_next_start == -1:
@@ -261,6 +256,7 @@ def extract_answer_translated_from_alignment(answer_text, answer_start, context,
 
         print('Original: {} | {}'.format(answer_text, answer_start))
         print('From alignment: {} | {}\n'.format(answer_translated, answer_translated_start))
+
     else:
         answer_translated = ''
         answer_translated_start = -1

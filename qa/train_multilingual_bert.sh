@@ -7,7 +7,7 @@ TRAIN_FILE=$1
 SQUAD_V2=$2
 
 TRANSFORMERS_DIR=${SCRIPT_DIR}/tools/transformers
-TRAINING_DIR=${SCRIPT_DIR}/data/$(basename ${TRAIN_FILE})
+TRAINING_DIR=${SCRIPT_DIR}/data/training/$(basename ${TRAIN_FILE})
 mkdir -p ${TRAINING_DIR}
 
 if [[ ! -z ${SQUAD_V2} ]]; then
@@ -17,6 +17,7 @@ if [[ ! -z ${SQUAD_V2} ]]; then
          --do_train \
          --do_lower_case \
          --train_file ${TRAIN_FILE}\
+         --save_steps 30000 \
          --predict_file "" \
          --logging_steps 10000 \
          --version_2_with_negative \
@@ -29,6 +30,7 @@ else
          --do_train \
          --do_lower_case \
          --train_file ${TRAIN_FILE}\
+         --save_steps 30000 \
          --predict_file "" \
          --logging_steps 10000 \
          --overwrite_output_dir \

@@ -10,7 +10,8 @@ ANSWER_LANG=$3
 
 TRANSFORMERS_DIR=${SCRIPT_DIR}/tools/transformers
 MLQA_DIR=${SCRIPT_DIR}/tools/MLQA
-EVALUATE_DIR=${SCRIPT_DIR}/data/evaluate
+EVALUATE_DIR=${SCRIPT_DIR}/data/evaluate/$(basename ${MODEL_DIR})
+mkdir -p ${EVALUATE_DIR}
 
 # Generate predictions
 # Add the train file path and pass it to the script to avoid errors
