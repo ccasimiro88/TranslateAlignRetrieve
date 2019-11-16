@@ -10,7 +10,7 @@ ANSWER_LANG=$3
 
 TRANSFORMERS_DIR=${SCRIPT_DIR}/tools/transformers
 MLQA_DIR=${SCRIPT_DIR}/tools/MLQA
-EVALUATE_DIR=${SCRIPT_DIR}/data/evaluate/$(basename ${MODEL_DIR})
+EVALUATE_DIR=${SCRIPT_DIR}/data/evaluate
 mkdir -p ${EVALUATE_DIR}
 
 # Generate predictions
@@ -28,8 +28,10 @@ python ${TRANSFORMERS_DIR}/examples/run_squad.py \
 
 # Evaluate the predictions with the MLQA original evaluation script
 PREDICTION_FILE=${MODEL_DIR}/predictions_.json
+EVALUATION_FILE=${EVALUATE_DIR}/$(basename ${MODEL_DIR})_eval
+echo "${TEST_FILE}: " >> ${EVALUATION_FILE}
 python ${MLQA_DIR}/mlqa_evaluation_v1.py \
        ${TEST_FILE} \
        ${PREDICTION_FILE} \
        ${ANSWER_LANG} \
-       > ${EVALUATE_DIR}/eval_$(basename ${TEST_FILE})
+       >> ${EVALUATION_FILE}
