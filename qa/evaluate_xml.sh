@@ -14,12 +14,12 @@ MLQA_DIR=${SCRIPT_DIR}/tools/MLQA
 
 if [[ ${TEST_SET} == "mlqa" ]]; then
     # Select the test file from the MLQA corpus
-    EVALUATE_DIR=${SCRIPT_DIR}/data/evaluate/xlm/mlqa
+    EVALUATE_DIR=${SCRIPT_DIR}/data/evaluate/mlqa
     mkdir -p ${EVALUATE_DIR}
     TEST_FILE=${SCRIPT_DIR}/corpora/MLQA_V1/test/test-context-${CONTEXT_LANG}-question-${QUESTION_LANG}.json
 elif [[ ${TEST_SET} == "xquad" ]]; then
     # Select the test file from the XSQUAD datasets
-    EVALUATE_DIR=${SCRIPT_DIR}/data/evaluate/xlm/xsquad
+    EVALUATE_DIR=${SCRIPT_DIR}/data/evaluate/xsquad
     mkdir -p ${EVALUATE_DIR}
     TEST_FILE=${SCRIPT_DIR}/corpora/XQUAD/xquad.${CONTEXT_LANG}.json
 else
