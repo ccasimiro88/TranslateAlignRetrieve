@@ -1,3 +1,5 @@
 env/*
 tools/*
 corpora/*
+data/*
+runs/*
