@@ -149,13 +149,15 @@ class SquadTranslator:
                     [self.content_translated_alignment[s]['alignment']
                      for s in context_sentences])
 
+                print('C_en: {} ||| C_es: {}'.format(context, context_translated))
+
                 # Translate context and replace its value back in the paragraphs
                 paragraphs['context'] = context_translated
                 for qa in paragraphs['qas']:
                     question = qa['question']
                     question_translated = self.content_translated_alignment[question]['translation']
                     qa['question'] = question_translated
-
+                    print('Q_en: {} ||| Q_es: {}'.format(question, question_translated))
                     # Translate answers and plausible answers for SQUAD v2.0
                     if self.version2:
                         if not qa['is_impossible']:
@@ -197,6 +199,7 @@ class SquadTranslator:
                                                                 self.answers_from_alignment)
                             answer['text'] = answer_translated
                             answer['answer_start'] = answer_translated_start
+
 
 
         print('Cleaning...')

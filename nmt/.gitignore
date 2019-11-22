@@ -2,4 +2,4 @@ corpora/*
 env/*
 data/*
 tools/*
-
+test*
