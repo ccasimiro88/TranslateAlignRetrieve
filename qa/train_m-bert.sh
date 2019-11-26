@@ -4,9 +4,11 @@ ENV_DIR=${SCRIPT_DIR}/env
 source ${ENV_DIR}/bin/activate
 
 TRAIN_FILE=$1
-EXP_NAME=$2
+TRAINING_DIR=$2
 TRAIN_FROM_MODEL=$3
 SQUAD_V2=$4
+
+mkdir -p ${TRAINING_DIR}
 
 # If no starting model is provided,
 # start the training from the Multilingual BERT
@@ -14,8 +16,6 @@ if [[ -z ${TRAIN_FROM_MODEL} ]]; then
   TRAIN_FROM_MODEL=bert-base-multilingual-cased
 fi
 TRANSFORMERS_DIR=${SCRIPT_DIR}/tools/transformers
-TRAINING_DIR=${SCRIPT_DIR}/data/training/$(basename ${EXP_NAME})
-mkdir -p ${TRAINING_DIR}
 
 if [[ ! -z ${SQUAD_V2} ]]; then
   python ${TRANSFORMERS_DIR}/examples/run_squad.py \
@@ -27,6 +27,7 @@ if [[ ! -z ${SQUAD_V2} ]]; then
          --predict_file "" \
          --version_2_with_negative \
          --overwrite_output_dir \
+         --overwrite_cache \
          --output_dir ${TRAINING_DIR}
 else
   python ${TRANSFORMERS_DIR}/examples/run_squad.py \
@@ -37,5 +38,6 @@ else
          --save_steps 10000 \
          --predict_file "" \
          --overwrite_output_dir \
+         --overwrite_cache \
          --output_dir ${TRAINING_DIR}
 fi

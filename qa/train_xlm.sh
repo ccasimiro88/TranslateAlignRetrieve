@@ -27,6 +27,7 @@ if [[ ! -z ${SQUAD_V2} ]]; then
          --predict_file "" \
          --version_2_with_negative \
          --overwrite_output_dir \
+         --overwrite_cache \
          --output_dir ${TRAINING_DIR}
 else
   python ${TRANSFORMERS_DIR}/examples/run_squad.py \
@@ -37,5 +38,6 @@ else
          --save_steps 10000 \
          --predict_file "" \
          --overwrite_output_dir \
+         --overwrite_cache \
          --output_dir ${TRAINING_DIR}
 fi

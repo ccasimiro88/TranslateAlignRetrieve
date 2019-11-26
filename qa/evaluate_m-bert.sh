@@ -8,22 +8,19 @@ MODEL_DIR=$1
 CONTEXT_LANG=$2
 QUESTION_LANG=$3
 TEST_SET=$4
+EVALUATE_DIR=$5
+mkdir -p ${EVALUATE_DIR}
+
 
 TRANSFORMERS_DIR=${SCRIPT_DIR}/tools/transformers
 MLQA_DIR=${SCRIPT_DIR}/tools/MLQA
-
 if [[ ${TEST_SET} == "mlqa" ]]; then
     # Select the test file from the MLQA corpus
-    EVALUATE_DIR=${SCRIPT_DIR}/data/evaluate/mlqa
-    mkdir -p ${EVALUATE_DIR}
     TEST_FILE=${SCRIPT_DIR}/corpora/MLQA_V1/test/test-context-${CONTEXT_LANG}-question-${QUESTION_LANG}.json
 elif [[ ${TEST_SET} == "xquad" ]]; then
     # Select the test file from the XSQUAD datasets
-    EVALUATE_DIR=${SCRIPT_DIR}/data/evaluate/xsquad
-    mkdir -p ${EVALUATE_DIR}
     TEST_FILE=${SCRIPT_DIR}/corpora/XQUAD/xquad.${CONTEXT_LANG}.json
 else
-    EVALUATE_DIR=${SCRIPT_DIR}
     TEST_FILE=${TEST_SET}
 fi
 
@@ -35,6 +32,7 @@ python ${TRANSFORMERS_DIR}/examples/run_squad.py \
          --train_file ${TRAIN_FILE} \
          --do_eval \
          --predict_file ${TEST_FILE} \
+         --overwrite_cache \
          --n_best_size 5 \
          --output_dir ${MODEL_DIR}
 

@@ -9,6 +9,7 @@ import pickle
 import argparse
 import translate_squad_utils as utils
 from tqdm import tqdm
+import logging
 
 class SquadTranslator:
     def __init__(self,
@@ -93,9 +94,9 @@ class SquadTranslator:
 
             # Translate contexts, questions and answers all together and write to file.
             # Also remove duplicates before to translate with set
-            content_translated = utils.translate(content, self.output_dir, self.batch_size)
-            content_translated = [utils.post_process_translation(sentence, sentence_translated)
-                                      for sentence, sentence_translated in zip (content, content_translated)]
+            content_translated = utils.translate(content, self.squad_file, self.output_dir, self.batch_size)
+            # content_translated = [utils.post_process_translation(sentence, sentence_translated)
+            #                           for sentence, sentence_translated in zip (content, content_translated)]
 
             # Compute alignments
             context_sentence_questions_answers_alignments = utils.compute_alignment(content,
@@ -103,6 +104,7 @@ class SquadTranslator:
                                                                                     content_translated,
                                                                                     self.lang_target,
                                                                                     self.alignment_type,
+                                                                                    self.squad_file,
                                                                                     self.output_dir)
 
             # Add translations and alignments
@@ -149,7 +151,10 @@ class SquadTranslator:
                     [self.content_translated_alignment[s]['alignment']
                      for s in context_sentences])
 
-                print('C_en: {} ||| C_es: {}'.format(context, context_translated))
+                max_sent_len = max([len(utils.tokenize(s, lang=self.lang_source, return_str=False))
+                                    for s in context_sentences])
+
+                print('C_en ({}): {} ||| C_es: {}'.format(max_sent_len, context, context_translated))
 
                 # Translate context and replace its value back in the paragraphs
                 paragraphs['context'] = context_translated

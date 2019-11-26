@@ -8,6 +8,7 @@ from sacremoses import MosesTokenizer, MosesDetokenizer
 import fasttext
 from collections import defaultdict
 from nltk import sent_tokenize
+import logging
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 
@@ -17,8 +18,8 @@ detokenizer_en = MosesDetokenizer(lang='en')
 tokenizer_es = MosesTokenizer(lang='es')
 detokenizer_es = MosesDetokenizer(lang='es')
 
-MAX_NUM_TOKENS=50
-SPLIT_DELIMITER=','
+MAX_NUM_TOKENS=10
+SPLIT_DELIMITER=';'
 LANGUAGE_ISO_MAP={'en': 'english', 'es': 'spanish'}
 
 def tokenize(text, lang, return_str=True):
@@ -72,19 +73,55 @@ def remove_line_breaks(text):
 
 
 # Remove trailing punctuation from the answers retrieved from alignment
-def remove_trailing_punct(text):
-    punctuation = ['.', ',']
-    text = text.strip()
-    if text and text[-1] in punctuation:
-        text = text[:-1]
-        return text
+def remove_extra_punct(source, translation):
+    periods_commas = '.,;:'
+    brackets = [['(',')'], ['[',']'], ['{','}']]
+    exclamation = '¡!'
+    quotation = '"'
+    if len(translation) != 1:
+        # Remove extra periods or commas
+        if source[-1] in periods_commas and translation[-1] in periods_commas:
+            translation = translation
+        else:
+            if source[-1] in periods_commas and translation[-1] not in periods_commas:
+                translation = translation + source[-1]
+            elif source[-1] not in periods_commas and translation[-1] in periods_commas:
+                translation = translation.strip(translation[-1])
+        # remove brackets
+        if translation[-1] in [b[1] for b in brackets] and any(c for c in translation if c in [b[0] for b in brackets]):
+            translation = translation
+        else:
+            for bracket in brackets:
+                if translation[-1] in bracket[1] and translation[0] not in bracket[0]:
+                    translation = translation[:-1]
+                elif translation[-1] not in bracket[1] and translation[0] in bracket[0]:
+                    translation = translation[1:]
+        # Complete exclamation mark
+        if translation[-1] in exclamation and translation[0] in exclamation:
+            translation = translation
+        else:
+            if translation[-1] in exclamation and translation[0] not in exclamation:
+                translation = exclamation[0] + translation
+            elif translation[-1] not in exclamation and translation[0] in exclamation:
+                translation = translation + exclamation[1]
+        # Complete quotation
+        if translation[-1] in quotation and translation[0] in quotation:
+            translation = translation
+        else:
+            if translation[-1] in quotation and translation[0] not in quotation:
+                translation = quotation + translation
+            elif translation[-1] not in quotation and translation[0] in quotation:
+                translation = translation + quotation
+        return translation
     else:
-        return text
+        return translation
 
+# Keep the first part when the answer translation come across
+# two sentences or when there are extra commas with words
 def remove_extra_text(source, translation):
     translation = sent_tokenize(translation, 'english')[0]
-    if source in translation:
-        translation = source
+    if ', ' in translation and ', ' not in source:
+        translation = translation.split(', ')[0]
     return translation
 
 
@@ -93,9 +130,15 @@ def remove_extra_text(source, translation):
 # that means might not be generalize to every language
 # TODO: generalize this logic to all the languages
 def post_process_answers_translated(source, translation):
-    translation = sent_tokenize(translation, 'english')[0]
-    translation = remove_extra_text(source, translation)
-    translation = remove_trailing_punct(translation)
+    # Keep the original answer when it is translation-invariant
+    # like dates or proper names
+    if source in translation:
+        translation = source
+    # Post-process the answer translated
+    else:
+        translation = translation.strip()
+        translation = remove_extra_text(source, translation)
+        translation = remove_extra_punct(source, translation)
     return translation
 
 # ALIGNMENT INDEX MANIPULATION
@@ -116,7 +159,6 @@ def shift_value_index_alignment(value_index, alignment, direction='right'):
             return value_indexes[next_value_index]
         else:
             return 0
-
 
 # Get the closest left or right index in a list given a certain number
 def get_left_right_close_index(indexes, number, type):
@@ -277,22 +319,21 @@ def extract_answer_translated_from_alignment(answer_text, answer_start,
     # Extract answer translated from context translated with answer_start and answer_next_start
     # the answer_translated is a span from the min to max char index (
     answer_translated = context_translated[answer_translated_start:answer_translated_next_start]
-    # # Post-process the retrieved answer
-    # answer_translated = post_process_answers_translated(answer_text, answer_translated)
-    #
+
     # # Finally, check is the answer translated is much longer than the original answer
     # if abs(len(answer_text.split()) - len(answer_translated.split())) > max_len_difference:
     #     answer_translated = ''
     #     answer_translated_start = -1
 
-    print('A_en (alignment): {} ||| A_es (alignment): {}'.format(answer_text, answer_translated))
+    answer_len = len(tokenize(answer_translated, lang='es', return_str=False))
+    print('A_en: {} ||| A_es ({}) (alignment): {}'.format(answer_text, answer_len, answer_translated))
     return answer_translated, answer_translated_start
 
 
 # This function extract the answer from a given context
 def extract_answer_translated(answer, answer_translated, context, context_translated, context_alignment_tok,
                               retrieve_answers_from_alignment):
-    
+
     # First, compute the src2tran_alignment_char
     context_alignment_char = get_src2tran_alignment_char(context_alignment_tok, context, context_translated)
 
@@ -311,17 +352,20 @@ def extract_answer_translated(answer, answer_translated, context, context_transl
         answer_translated, answer_translated_start = '', -1
     # Find answer_start in the translated context by looking close to the answer_translated_char_start
     # I am shifting the index by an additional 20 chars to the left in the case
-    # the alignment is not precise enough (20 chars is more or less 2/3 words)
+    # the alignment is not precise enough (20 chars is more or less 2/3 words).
+    # If the shifted answer_start is smaller than 0, we set it as zero to matching errors
     shift_index = -20
+    answer_translated_start_shifted = answer_translated_start + shift_index
+    if answer_translated_start_shifted < 0:
+        answer_translated_start_shifted = 0
+
     if context_translated.lower().find(answer_translated.lower(),
-                                       answer_translated_start + shift_index) != -1:
+                                       answer_translated_start_shifted) != -1:
 
         answer_translated_start = context_translated.lower().find(answer_translated.lower(),
-                                                                  answer_translated_start + shift_index)
+                                                                  answer_translated_start_shifted)
         answer_translated_end = answer_translated_start + len(answer_translated)
         answer_translated = context_translated[answer_translated_start: answer_translated_end]
-        answer_translated = remove_trailing_punct(answer_translated)
-
         print('A_en: {} ||| A_es: {}'.format(answer_text, answer_translated))
 
     # 1.2) Find the answer_translated in the context_translated from the beginning of the text
@@ -332,8 +376,6 @@ def extract_answer_translated(answer, answer_translated, context, context_transl
             answer_translated_start = context_translated.lower().find(answer_translated.lower())
             answer_translated_end = answer_translated_start + len(answer_translated)
             answer_translated = context_translated[answer_translated_start: answer_translated_end]
-            answer_translated = remove_trailing_punct(answer_translated)
-
             print('A_en: {} ||| A_es: {}'.format(answer_text, answer_translated))
 
         # 2) Retrieve the answer from the context translated using the
@@ -351,6 +393,14 @@ def extract_answer_translated(answer, answer_translated, context, context_transl
     else:
         answer_translated = ''
         answer_translated_start = -1
+
+        print('A_en: {} ||| A_es: (empty): {}'.format(answer_text, answer_translated))
+
+    # Post-process if the answer is not empty
+    if answer_translated:
+        answer_translated = post_process_answers_translated(answer_text, answer_translated)
+        print('A_en: {} ||| A_es: (post-process): {}'.format(answer_text, answer_translated))
+
 
     return answer_translated, answer_translated_start
 
@@ -388,13 +438,14 @@ def post_process_translation(source, translation, punctuation=PUNCTUATION):
 
 
 # Translate via the OpenNMT-py script
-def translate(source_sentences, output_dir, batch_size):
+def translate(source_sentences, file, output_dir, batch_size):
 
-    source_filename = os.path.join(output_dir, 'source_translate')
+    filename = os.path.basename(file)
+    source_filename = os.path.join(output_dir, '{}_source_translate'.format(filename))
     with open(source_filename, 'w') as sf:
         sf.writelines('\n'.join(s for s in source_sentences))
 
-    translation_filename = os.path.join(output_dir, 'target_translated')
+    translation_filename = os.path.join(output_dir, '{}_target_translated'.format(filename))
     en2es_translate_cmd = SCRIPT_DIR + '/en2es_translate.sh {} {} {}'.format(source_filename,
                                                                              translation_filename,
                                                                              batch_size)
@@ -412,16 +463,17 @@ def translate(source_sentences, output_dir, batch_size):
 # COMPUTE ALIGNMENT
 # Compute alignment between source and target sentences
 def compute_alignment(source_sentences, source_lang, translated_sentences, target_lang,
-                      alignment_type, output_dir):
+                      alignment_type, file, output_dir):
 
+    filename = os.path.basename(file)
     source_sentences = [tokenize(sentence, source_lang) for sentence in source_sentences]
     translated_sentences = [tokenize(sentence, target_lang) for sentence in translated_sentences]
 
-    source_filename = os.path.join(output_dir, 'source_align')
+    source_filename = os.path.join(output_dir, '{}_source_align'.format(filename))
     with open(source_filename, 'w') as sf:
         sf.writelines('\n'.join(s for s in source_sentences))
 
-    translation_filename = os.path.join(output_dir, 'target_align')
+    translation_filename = os.path.join(output_dir, '{}_target_align'.format(filename))
     with open(translation_filename, 'w') as tf:
         tf.writelines('\n'.join(s for s in translated_sentences))
 
