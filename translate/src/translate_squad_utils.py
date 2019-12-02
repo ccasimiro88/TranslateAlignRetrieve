@@ -132,14 +132,16 @@ def remove_extra_text(source, translation):
 def post_process_answers_translated(source, translation):
     # Keep the original answer when it is translation-invariant
     # like dates or proper names
-    if source in translation:
+    if len(source)>1 and source in translation:
         translation = source
     # Post-process the answer translated
     else:
         translation = translation.strip()
         translation = remove_extra_text(source, translation)
         translation = remove_extra_punct(source, translation)
+
     return translation
+
 
 # ALIGNMENT INDEX MANIPULATION
 # Shift index in an alignment by a given amount in a give direction
@@ -320,13 +322,8 @@ def extract_answer_translated_from_alignment(answer_text, answer_start,
     # the answer_translated is a span from the min to max char index (
     answer_translated = context_translated[answer_translated_start:answer_translated_next_start]
 
-    # # Finally, check is the answer translated is much longer than the original answer
-    # if abs(len(answer_text.split()) - len(answer_translated.split())) > max_len_difference:
-    #     answer_translated = ''
-    #     answer_translated_start = -1
-
     answer_len = len(tokenize(answer_translated, lang='es', return_str=False))
-    print('A_en: {} ||| A_es ({}) (alignment): {}'.format(answer_text, answer_len, answer_translated))
+    # print('A_en: {} ||| A_es ({}) (alignment): {}'.format(answer_text, answer_len, answer_translated))
     return answer_translated, answer_translated_start
 
 
@@ -366,7 +363,7 @@ def extract_answer_translated(answer, answer_translated, context, context_transl
                                                                   answer_translated_start_shifted)
         answer_translated_end = answer_translated_start + len(answer_translated)
         answer_translated = context_translated[answer_translated_start: answer_translated_end]
-        print('A_en: {} ||| A_es: {}'.format(answer_text, answer_translated))
+        # print('A_en: {} ||| A_es: {}'.format(answer_text, answer_translated))
 
     # 1.2) Find the answer_translated in the context_translated from the beginning of the text
     elif context_translated.lower().find(answer_translated.lower(),
@@ -376,7 +373,7 @@ def extract_answer_translated(answer, answer_translated, context, context_transl
             answer_translated_start = context_translated.lower().find(answer_translated.lower())
             answer_translated_end = answer_translated_start + len(answer_translated)
             answer_translated = context_translated[answer_translated_start: answer_translated_end]
-            print('A_en: {} ||| A_es: {}'.format(answer_text, answer_translated))
+            # print('A_en: {} ||| A_es (alignment): {}'.format(answer_text, answer_translated))
 
         # 2) Retrieve the answer from the context translated using the
         # answer start and answer end provided by the alignment
@@ -393,14 +390,12 @@ def extract_answer_translated(answer, answer_translated, context, context_transl
     else:
         answer_translated = ''
         answer_translated_start = -1
-
-        print('A_en: {} ||| A_es: (empty): {}'.format(answer_text, answer_translated))
+        # print('A_en: {} ||| A_es: (empty): {}'.format(answer_text, answer_translated))
 
     # Post-process if the answer is not empty
     if answer_translated:
         answer_translated = post_process_answers_translated(answer_text, answer_translated)
-        print('A_en: {} ||| A_es: (post-process): {}'.format(answer_text, answer_translated))
-
+        # print('A_en: {} ||| A_es: (post-process): {}'.format(answer_text, answer_translated))
 
     return answer_translated, answer_translated_start
 

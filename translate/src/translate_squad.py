@@ -154,7 +154,7 @@ class SquadTranslator:
                 max_sent_len = max([len(utils.tokenize(s, lang=self.lang_source, return_str=False))
                                     for s in context_sentences])
 
-                print('C_en ({}): {} ||| C_es: {}'.format(max_sent_len, context, context_translated))
+                # print('C_en ({}): {} ||| C_es: {}'.format(max_sent_len, context, context_translated))
 
                 # Translate context and replace its value back in the paragraphs
                 paragraphs['context'] = context_translated
@@ -162,7 +162,7 @@ class SquadTranslator:
                     question = qa['question']
                     question_translated = self.content_translated_alignment[question]['translation']
                     qa['question'] = question_translated
-                    print('Q_en: {} ||| Q_es: {}'.format(question, question_translated))
+                    # print('Q_en: {} ||| Q_es: {}'.format(question, question_translated))
                     # Translate answers and plausible answers for SQUAD v2.0
                     if self.version2:
                         if not qa['is_impossible']:

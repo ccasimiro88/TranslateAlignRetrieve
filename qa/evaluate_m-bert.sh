@@ -1,5 +1,5 @@
-# This script evaluate a QA model on the MLQA dataset.
 #!/bin/bash
+# This script evaluate a QA model on the MLQA dataset.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ENV_DIR=${SCRIPT_DIR}/env
 source ${ENV_DIR}/bin/activate
@@ -14,6 +14,8 @@ mkdir -p ${EVALUATE_DIR}
 
 TRANSFORMERS_DIR=${SCRIPT_DIR}/tools/transformers
 MLQA_DIR=${SCRIPT_DIR}/tools/MLQA
+SQUAD_DIR=${SCRIPT_DIR}/tools/squad
+
 if [[ ${TEST_SET} == "mlqa" ]]; then
     # Select the test file from the MLQA corpus
     TEST_FILE=${SCRIPT_DIR}/corpora/MLQA_V1/test/test-context-${CONTEXT_LANG}-question-${QUESTION_LANG}.json
@@ -36,11 +38,27 @@ python ${TRANSFORMERS_DIR}/examples/run_squad.py \
          --n_best_size 5 \
          --output_dir ${MODEL_DIR}
 
-# Evaluate the predictions with the MLQA original evaluation script
 PREDICTION_FILE=${MODEL_DIR}/predictions_.json
 EVALUATION_FILE=${EVALUATE_DIR}/$(basename ${MODEL_DIR})_eval
-python ${MLQA_DIR}/mlqa_evaluation_v1.py \
-       ${TEST_FILE} \
-       ${PREDICTION_FILE} \
-       ${CONTEXT_LANG} \
-       >> ${EVALUATION_FILE}
+
+if [[ ${TEST_SET} == "mlqa" ]]; then
+   # Evaluate with the MLQA original evaluation script
+   python ${MLQA_DIR}/mlqa_evaluation_v1.py \
+          ${TEST_FILE} \
+          ${PREDICTION_FILE} \
+          ${CONTEXT_LANG} \
+          >> ${EVALUATION_FILE}
+
+elif [[ ${TEST_SET} == "xquad" ]]; then
+   # Evaluate with the official SQUAD v2.0 script
+   python ${SQUAD_DIR}/eval_squad_v2.0.py \
+          ${TEST_FILE} \
+          ${PREDICTION_FILE} \
+          >> ${EVALUATION_FILE}
+else
+   # Evaluate with the official SQUAD v2.0 script
+   python ${SQUAD_DIR}/eval_squad_v2.0.py \
+          ${TEST_FILE} \
+          ${PREDICTION_FILE} \
+          >> ${EVALUATION_FILE}
+fi

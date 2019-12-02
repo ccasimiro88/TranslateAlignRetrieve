@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.INFO)
 def join(squad_file1, squad_file2):
     with open(squad_file1) as sf1:
         squad1 = json.load(sf1)
-
+    
     with open(squad_file2) as sf2:
         squad2 = json.load(sf2)
     if squad1['version'] == squad2['version']:
