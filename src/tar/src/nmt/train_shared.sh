@@ -5,6 +5,13 @@ source $ENV_DIR/bin/activate
 
 LANG_SRC=$1
 LANG_TGT=$2
+
+if [[ $# -eq 0 ]]
+  then
+  LANG_SRC=en
+  LANG_TGT=es
+fi
+
 TRANSLATION_DIR=${LANG_SRC}"2"${LANG_TGT}
 PREPROCESS_DIR=${SCRIPT_DIR}/data/$TRANSLATION_DIR/preprocess
 TRAIN_DIR=${SCRIPT_DIR}/data/$TRANSLATION_DIR/train

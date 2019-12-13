@@ -9,6 +9,15 @@ TEST_TGT=$3
 LANG_TGT=$4
 MODEL_CHECKPOINT=$5
 
+if [[ $# -eq 0 ]]
+  then
+  TEST_SRC=${SCRIPT_DIR}/data/en2es/datasets/test.en
+  LANG_SRC=en
+  TEST_TGT=${SCRIPT_DIR}/data/en2es/datasets/test.es
+  LANG_TGT=es
+  MODEL_CHECKPOINT=${SCRIPT_DIR}/data/en2es/train/shared/en2es_average_model.pt
+fi
+
 TOOLS_DIR=${SCRIPT_DIR}/../../tools
 MOSES_DIR=${TOOLS_DIR}/mosesdecoder
 ONMT_DIR=${TOOLS_DIR}/OpenNMT-py

@@ -4,11 +4,19 @@ ENV_DIR=${SCRIPT_DIR}/../../env
 source ${ENV_DIR}/bin/activate
 
 # Train the alignment model with eflomal and generated priors
-# The text should be tokenized before computing the alignment.
+# The text should be tokenised before computing the alignment.
 FILE_SRC=$1
 LANG_SRC=$2
 FILE_TGT=$3
 LANG_TGT=$4
+
+if [[ $# -eq 0 ]]
+  then
+  FILE_SRC=${SCRIPT_DIR}/../nmt/data/en2es/preprocess/train.tok.en
+  LANG_SRC=en
+  FILE_TGT=${SCRIPT_DIR}/../nmt/data/en2es/preprocess/train.tok.es
+  LANG_TGT=es
+fi
 
 # Compute forward and reverse alignment models
 TOOLS_DIR=${SCRIPT_DIR}/../../tools

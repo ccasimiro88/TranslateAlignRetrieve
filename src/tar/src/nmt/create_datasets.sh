@@ -9,8 +9,16 @@ SRC_LANG=$2
 TGT_FILE=$3
 TGT_LANG=$4
 
+if [[ $# -eq 0 ]]
+  then
+  SRC_FILE=${SCRIPT_DIR}/corpora/en-es/corpora.en
+  SRC_LANG=en
+  TGT_FILE=${SCRIPT_DIR}/corpora/en-es/corpora.es
+  TGT_LANG=es
+fi
+
 # Create datasets dir
-SRC_TO_TGT=$SRC_LANG'2'$TGT_LANG
+SRC_TO_TGT=${SRC_LANG}'2'${TGT_LANG}
 DATASETS_DIR=${SCRIPT_DIR}/data/${SRC_TO_TGT}/datasets
 mkdir -p ${DATASETS_DIR}
 python ${SCRIPT_DIR}/src/create_datasets.py

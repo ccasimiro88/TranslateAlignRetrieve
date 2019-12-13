@@ -7,6 +7,13 @@ DATASETS_DIR=$1
 LANG_SRC=$2
 LANG_TGT=$3
 
+if [[ $# -eq 0 ]]
+  then
+  DATASETS_DIR=${SCRIPT_DIR}/data/en2es/datasets
+  LANG_SRC=en
+  LANG_TGT=es
+fi
+
 #Create preprocess data dir
 TRANSLATION_DIR=$LANG_SRC'2'$LANG_TGT
 PREPROCESS_DIR=$SCRIPT_DIR/data/$TRANSLATION_DIR/preprocess

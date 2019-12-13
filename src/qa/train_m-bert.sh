@@ -4,10 +4,10 @@ ENV_DIR=${SCRIPT_DIR}/env
 source ${ENV_DIR}/bin/activate
 
 TRAIN_FILE=$1
-TRAINING_DIR=$2
+SQUAD_V2=$2
 TRAIN_FROM_MODEL=$3
-SQUAD_V2=$4
 
+TRAINING_DIR=${SCRIPT_DIR}/data/training/m-bert_$(basename ${TRAIN_FILE})
 mkdir -p ${TRAINING_DIR}
 
 # If no starting model is provided,

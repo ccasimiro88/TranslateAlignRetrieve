@@ -10,6 +10,15 @@ MODEL3=$3
 LANG_SRC=$4
 LANG_TGT=$5
 
+if [[ $# -eq 0 ]]
+  then
+  MODEL1=${SCRIPT_DIR}/data/en2es/train/shared/en2es_transformer_shared_vocab_embs_step_180000.pt
+  MODEL2=${SCRIPT_DIR}/data/en2es/train/shared/en2es_transformer_shared_vocab_embs_step_190000.pt
+  MODEL3=${SCRIPT_DIR}/data/en2es/train/shared/en2es_transformer_shared_vocab_embs_step_200000.pt
+  LANG_SRC=en
+  LANG_TGT=es
+fi
+
 echo -e "Averaging models...\n${MODEL1}\n${MODEL2}\n${MODEL3}"
 
 MODEL_DIR=$(dirname ${MODEL1})
