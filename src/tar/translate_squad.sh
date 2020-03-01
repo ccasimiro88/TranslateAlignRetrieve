@@ -15,15 +15,15 @@ if [[ -z "$3" ]] && [[ -z "$4" ]]
   LANG_TGT=es
 fi
 
-TRANSLATE_RETRIEVE_DIR=${SCRIPT_DIR}/src/translate_retrieve
+TRANSLATE_RETRIEVE_DIR=${SCRIPT_DIR}/src/retrieve
 if [[ -z "$5" ]]; then
-    python ${TRANSLATE_RETRIEVE_DIR}/retrieve_squad.py \
+    python ${TRANSLATE_RETRIEVE_DIR}/translate_retrieve_squad.py \
            -squad_file  ${SQUAD_FILE} \
            -lang_source ${LANG_SRC} \
            -lang_target ${LANG_TGT} \
            -output_dir ${OUTPUT_DIR}
 else
-    python ${TRANSLATE_RETRIEVE_DIR}/retrieve_squad.py \
+    python ${TRANSLATE_RETRIEVE_DIR}/translate_retrieve_squad.py \
            -squad_file  ${SQUAD_FILE} \
            -lang_source ${LANG_SRC} \
            -lang_target ${LANG_TGT} \
