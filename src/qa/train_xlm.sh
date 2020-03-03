@@ -5,14 +5,10 @@ source ${ENV_DIR}/bin/activate
 
 TRAIN_FILE=$1
 EXP_NAME=$2
-TRAIN_FROM_MODEL=$3
-SQUAD_V2=$4
+SQUAD_V2=$3
 
-# If no starting model is provided,
-# start the training from the Multilingual BERT
-if [[ -z ${TRAIN_FROM_MODEL} ]]; then
-  TRAIN_FROM_MODEL=xlm-mlm-tlm-xnli15-1024
-fi
+
+TRAIN_FROM_MODEL=xlm-mlm-tlm-xnli15-1024
 TRANSFORMERS_DIR=${SCRIPT_DIR}/tools/transformers
 TRAINING_DIR=${SCRIPT_DIR}/data/training/$(basename ${EXP_NAME})
 mkdir -p ${TRAINING_DIR}
@@ -22,6 +18,7 @@ if [[ ! -z ${SQUAD_V2} ]]; then
          --model_type xlm \
          --model_name_or_path ${TRAIN_FROM_MODEL} \
          --do_train \
+         --do_lower_case \
          --train_file ${TRAIN_FILE}\
          --save_steps 10000 \
          --predict_file "" \
@@ -34,6 +31,7 @@ else
          --model_type xlm \
          --model_name_or_path ${TRAIN_FROM_MODEL} \
          --do_train \
+         --do_lower_case \
          --train_file ${TRAIN_FILE}\
          --save_steps 10000 \
          --predict_file "" \

@@ -3,3 +3,4 @@ tools/*
 corpora/*
 data/*
 runs/*
+cached*
