@@ -15,9 +15,10 @@ detokenizer_en = MosesDetokenizer(lang='en')
 tokenizer_es = MosesTokenizer(lang='es')
 detokenizer_es = MosesDetokenizer(lang='es')
 
-MAX_NUM_TOKENS=10
-SPLIT_DELIMITER=';'
-LANGUAGE_ISO_MAP={'en': 'english', 'es': 'spanish'}
+MAX_NUM_TOKENS = 10
+SPLIT_DELIMITER = ';'
+LANGUAGE_ISO_MAP = {'en': 'english', 'es': 'spanish'}
+
 
 def tokenize(text, lang, return_str=True):
     if lang == 'en':
@@ -50,7 +51,7 @@ def split_sentences(text, lang, delimiter=SPLIT_DELIMITER, max_size=MAX_NUM_TOKE
         delimiter_match = delimiter + ' '
         text_chunks = [chunk.strip() for chunk in text.split(delimiter_match) if chunk]
         # Add the delimiter lost during chunking
-        text_chunks = [chunk+delimiter for chunk in text_chunks[:-1]] + [text_chunks[-1]]
+        text_chunks = [chunk + delimiter for chunk in text_chunks[:-1]] + [text_chunks[-1]]
         return text_chunks
     return [text]
 
@@ -72,7 +73,7 @@ def remove_line_breaks(text):
 # Remove trailing punctuation from the answers retrieved from alignment
 def remove_extra_punct(source, translation):
     periods_commas = '.,;:'
-    brackets = [['(',')'], ['[',']'], ['{','}']]
+    brackets = [['(', ')'], ['[', ']'], ['{', '}']]
     exclamation = '¡!'
     quotation = '"'
     if len(translation) != 1:
@@ -113,10 +114,11 @@ def remove_extra_punct(source, translation):
     else:
         return translation
 
+
 # Keep the first part when the answer translation come across
 # two sentences or when there are extra commas with words
-def remove_extra_text(source, translation):
-    translation = sent_tokenize(translation, 'english')[0]
+def remove_extra_text(source, translation, lang='es'):
+    translation = sent_tokenize(translation, LANGUAGE_ISO_MAP[lang])[0]
     if ', ' in translation and ', ' not in source:
         translation = translation.split(', ')[0]
     return translation
@@ -129,7 +131,7 @@ def remove_extra_text(source, translation):
 def post_process_answers_translated(source, translation):
     # Keep the original answer when it is translation-invariant
     # like dates or proper names
-    if len(source)>1 and source in translation:
+    if len(source) > 1 and source in translation:
         translation = source
     # Post-process the answer translated
     else:
@@ -158,6 +160,7 @@ def shift_value_index_alignment(value_index, alignment, direction='right'):
             return value_indexes[next_value_index]
         else:
             return 0
+
 
 # Get the closest left or right index in a list given a certain number
 def get_left_right_close_index(indexes, number, type):
@@ -219,7 +222,6 @@ def tok2char_map(text_raw, text_tok):
 # Convert a token-level alignment into a char-level alignment
 # Can be white-spaced tokens or normal tokens, the important thing is the one-to-one mapping
 def get_src2tran_alignment_char(alignment, source, translation):
-
     source_tok = tokenize(source, 'en')
     translation_tok = tokenize(translation, 'es')
     src_tok2char = tok2char_map(source, source_tok)
@@ -283,7 +285,6 @@ def extract_answer_translated_from_alignment(answer_text, answer_start,
                                              context, context_translated,
                                              context_alignment,
                                              max_len_difference=10):
-
     # Get the corresponding start and end char of the answer_translated in the context translated
     # First, get all the index positions for each word in the answer
     answer_words_positions = [answer_start]
@@ -324,7 +325,6 @@ def extract_answer_translated_from_alignment(answer_text, answer_start,
 # This function extract the answer from a given context
 def extract_answer_translated(answer, answer_translated, context, context_translated, context_alignment_tok,
                               retrieve_answers_from_alignment):
-
     # First, compute the src2tran_alignment_char
     context_alignment_char = get_src2tran_alignment_char(context_alignment_tok, context, context_translated)
 
@@ -394,6 +394,7 @@ def extract_answer_translated(answer, answer_translated, context, context_transl
 # Translate text using the OpenNMT-py script
 PUNCTUATION = ['.', ',', '?', '!', '¿', '¡', ')', '(', ']', '[']
 
+
 # Remove extra punctuation when the translations come from a very short text
 # Handle exceptions in case the translation in just one word length
 def post_process_translation(source, translation, punctuation=PUNCTUATION):
@@ -403,7 +404,7 @@ def post_process_translation(source, translation, punctuation=PUNCTUATION):
             translation = translation[0]
         if source[0].isupper():
             translation = translation[0].upper() + translation[1:]
-        if source[0].islower() and len(translation)>1:
+        if source[0].islower() and len(translation) > 1:
             translation = translation[0].lower() + translation[1:]
         if source[-1] == '.':
             if translation[-1] in punctuation:
@@ -415,7 +416,7 @@ def post_process_translation(source, translation, punctuation=PUNCTUATION):
                 translation = translation[:-1] + ','
             else:
                 translation += ','
-        if translation[0] in punctuation and len(translation)>1:
+        if translation[0] in punctuation and len(translation) > 1:
             translation = translation[1:]
         return translation
     except IndexError:
@@ -424,7 +425,6 @@ def post_process_translation(source, translation, punctuation=PUNCTUATION):
 
 # Translate via the OpenNMT-py script
 def translate(source_sentences, file, output_dir, batch_size):
-
     filename = os.path.basename(file)
     source_filename = os.path.join(output_dir, '{}_source_translate'.format(filename))
     with open(source_filename, 'w') as sf:
@@ -432,8 +432,8 @@ def translate(source_sentences, file, output_dir, batch_size):
 
     translation_filename = os.path.join(output_dir, '{}_target_translated'.format(filename))
     en2es_translate_cmd = SCRIPT_DIR + '/../nmt/en2es_translate.sh {} {} {}'.format(source_filename,
-                                                                             translation_filename,
-                                                                             batch_size)
+                                                                                    translation_filename,
+                                                                                    batch_size)
     subprocess.run(en2es_translate_cmd.split())
 
     with open(translation_filename) as tf:
@@ -449,7 +449,6 @@ def translate(source_sentences, file, output_dir, batch_size):
 # Compute alignment between source and target sentences
 def compute_alignment(source_sentences, source_lang, translated_sentences, target_lang,
                       alignment_type, file, output_dir):
-
     filename = os.path.basename(file)
     source_sentences = [tokenize(sentence, source_lang) for sentence in source_sentences]
     translated_sentences = [tokenize(sentence, target_lang) for sentence in translated_sentences]
@@ -464,11 +463,11 @@ def compute_alignment(source_sentences, source_lang, translated_sentences, targe
 
     alignment_filename = os.path.join(output_dir, 'alignment')
     efolmal_cmd = SCRIPT_DIR + '/../alignment/compute_alignment.sh {} {} {} {} {} {}'.format(source_filename,
-                                                                                   source_lang,
-                                                                                   translation_filename,
-                                                                                   target_lang,
-                                                                                   alignment_type,
-                                                                                   alignment_filename)
+                                                                                             source_lang,
+                                                                                             translation_filename,
+                                                                                             target_lang,
+                                                                                             alignment_type,
+                                                                                             alignment_filename)
     subprocess.run(efolmal_cmd.split())
 
     with open(alignment_filename) as af:
