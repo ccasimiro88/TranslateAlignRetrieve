@@ -6,39 +6,24 @@ import tempfile
 from sacremoses import MosesTokenizer, MosesDetokenizer
 from collections import defaultdict
 from nltk import sent_tokenize
+import sentence_splitter
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 
 # PROCESSING TEXT
-tokenizer_en = MosesTokenizer(lang='en')
-detokenizer_en = MosesDetokenizer(lang='en')
-tokenizer_es = MosesTokenizer(lang='es')
-detokenizer_es = MosesDetokenizer(lang='es')
-
 MAX_NUM_TOKENS = 10
 SPLIT_DELIMITER = ';'
 LANGUAGE_ISO_MAP = {'en': 'english', 'es': 'spanish'}
 
 
 def tokenize(text, lang, return_str=True):
-    if lang == 'en':
-        text_tok = tokenizer_en.tokenize(text, return_str=return_str, escape=False)
-        return text_tok
-    elif lang == 'es':
-        text_tok = tokenizer_es.tokenize(text, return_str=return_str, escape=False)
-        return text_tok
+    return MosesTokenizer(lang=lang).tokenize(text, return_str=return_str, escape=False)
 
 
 def de_tokenize(text, lang):
     if not isinstance(text, list):
         text = text.split()
-
-    if lang == 'en':
-        text_detok = detokenizer_en.detokenize(text, return_str=True)
-        return text_detok
-    elif lang == 'es':
-        text_detok = detokenizer_es.detokenize(text, return_str=True)
-        return text_detok
+    return MosesDetokenizer(lang=lang).detokenize(text, return_str=True)
 
 
 # Chunk sentences longer than a maximum number of words/tokens based on a delimiter character.
@@ -58,7 +43,7 @@ def split_sentences(text, lang, delimiter=SPLIT_DELIMITER, max_size=MAX_NUM_TOKE
 
 def tokenize_sentences(text, lang):
     sentences = [chunk
-                 for sentence in sent_tokenize(text, LANGUAGE_ISO_MAP[lang])
+                 for sentence in sentence_splitter.SentenceSplitter(language=lang).split(text)
                  for chunk in split_sentences(sentence, lang)]
     return sentences
 
@@ -118,7 +103,7 @@ def remove_extra_punct(source, translation):
 # Keep the first part when the answer translation come across
 # two sentences or when there are extra commas with words
 def remove_extra_text(source, translation, lang='es'):
-    translation = sent_tokenize(translation, LANGUAGE_ISO_MAP[lang])[0]
+    translation = sentence_splitter.SentenceSplitter(language=lang).split(translation)[0]
     if ', ' in translation and ', ' not in source:
         translation = translation.split(', ')[0]
     return translation
@@ -138,7 +123,6 @@ def post_process_answers_translated(source, translation):
         translation = translation.strip()
         translation = remove_extra_text(source, translation)
         translation = remove_extra_punct(source, translation)
-
     return translation
 
 
@@ -342,16 +326,15 @@ def extract_answer_translated(answer, answer_translated, context, context_transl
     except KeyError:
         answer_translated, answer_translated_start = '', -1
     # Find answer_start in the translated context by looking close to the answer_translated_char_start
-    # I am shifting the index by an additional 20 chars to the left in the case
+    # Shifting the index by an additional 20 chars to the left in the case
     # the alignment is not precise enough (20 chars is more or less 2/3 words).
-    # If the shifted answer_start is smaller than 0, we set it as zero to matching errors
+    # If the shifted answer_start is smaller than 0, we set it as zero to match from start errors
     shift_index = -20
     answer_translated_start_shifted = answer_translated_start + shift_index
     if answer_translated_start_shifted < 0:
         answer_translated_start_shifted = 0
 
-    if context_translated.lower().find(answer_translated.lower(),
-                                       answer_translated_start_shifted) != -1:
+    if context_translated.lower().find(answer_translated.lower(), answer_translated_start_shifted) != -1:
 
         answer_translated_start = context_translated.lower().find(answer_translated.lower(),
                                                                   answer_translated_start_shifted)
@@ -386,7 +369,6 @@ def extract_answer_translated(answer, answer_translated, context, context_transl
     # Post-process if the answer is not empty
     if answer_translated:
         answer_translated = post_process_answers_translated(answer_text, answer_translated)
-
     return answer_translated, answer_translated_start
 
 
@@ -461,6 +443,7 @@ def compute_alignment(source_sentences, source_lang, translated_sentences, targe
     with open(translation_filename, 'w') as tf:
         tf.writelines('\n'.join(s for s in translated_sentences))
 
+    # TODO: add the case with priors
     alignment_filename = os.path.join(output_dir, 'alignment')
     efolmal_cmd = SCRIPT_DIR + '/../alignment/compute_alignment.sh {} {} {} {} {} {}'.format(source_filename,
                                                                                              source_lang,
@@ -472,8 +455,8 @@ def compute_alignment(source_sentences, source_lang, translated_sentences, targe
 
     with open(alignment_filename) as af:
         alignments = [a.strip() for a in af.readlines()]
-
-    os.remove(source_filename)
-    os.remove(translation_filename)
-    os.remove(alignment_filename)
+    #
+    # os.remove(source_filename)
+    # os.remove(translation_filename)
+    # os.remove(alignment_filename)
     return alignments

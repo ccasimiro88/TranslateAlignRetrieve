@@ -386,7 +386,7 @@ if __name__ == "__main__":
     parser.add_argument('--answers_from_alignment', action='store_true',
                         help='retrieve translated answers only from the alignment')
     parser.add_argument('--alignment_type', type=str, default='forward', help='use a given translation service')
-    parser.add_argument('--batch_size', type=int, default='32', help='batch_size for the translation script '
+    parser.add_argument('--batch_size', type=int, default='1', help='batch_size for the translation script '
                                                                      '(change this value in case of CUDA out-of-memory')
     args = parser.parse_args()
 

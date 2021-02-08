@@ -11,6 +11,7 @@ FILE_TGT=$3
 LANG_TGT=$4
 ALIGNMENT_TYPE=$5
 OUTPUT_FILE=$6
+PRIORS_DIR=$7
 
 export LC_ALL=en_US.UTF8
 
@@ -25,15 +26,25 @@ FWD_ALIGN=$(mktemp)
 REV_ALIGN=$(mktemp)
 SYM_ALIGN=$(mktemp)
 
-PRIORS_DIR=${SCRIPT_DIR}/../alignment/data
-python ${EFLOMAL_DIR}/align.py \
-        -s ${FILE_SRC} \
-        -t ${FILE_TGT} \
-        --priors ${PRIORS_DIR}/align.priors*\
-        --model 3 \
-        -f ${FWD_ALIGN} \
-        -r ${REV_ALIGN} \
-        -v --overwrite
+if [[ ! -z $PRIORS_DIR ]]; then
+  PRIORS_DIR=${SCRIPT_DIR}/../alignment/data
+  python ${EFLOMAL_DIR}/align.py \
+          -s ${FILE_SRC} \
+          -t ${FILE_TGT} \
+          --priors ${PRIORS_DIR}/align.priors*\
+          --model 3 \
+          -f ${FWD_ALIGN} \
+          -r ${REV_ALIGN} \
+          -v --overwrite
+else
+    python ${EFLOMAL_DIR}/align.py \
+          -s ${FILE_SRC} \
+          -t ${FILE_TGT} \
+          --model 3 \
+          -f ${FWD_ALIGN} \
+          -r ${REV_ALIGN} \
+          -v --overwrite
+fi
 
 echo "Symmetrize alignments..."
 ${FASTALIGN_DIR}/build/atools \

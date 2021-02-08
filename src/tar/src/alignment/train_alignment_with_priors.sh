@@ -21,10 +21,8 @@ fi
 # Compute forward and reverse alignment models
 TOOLS_DIR=${SCRIPT_DIR}/../../tools
 EFLOMAL_DIR=${TOOLS_DIR}/eflomal
-FASTALIGN_DIR=${TOOLS_DIR}/fast_align
-MOSES_DIR=${TOOLS_DIR}/mosesdecoder
 
-DATA_DIR=${SCRIPT_DIR}/data
+DATA_DIR=${SCRIPT_DIR}/data_${LANG_SRC}-${LANG_TGT}
 mkdir -p ${DATA_DIR}
 
 export LC_ALL=en_US.UTF8
