@@ -66,7 +66,8 @@ class SquadTranslator:
     # Translate all the textual content in the SQUAD dataset, that are, context, questions and answers.
     # The alignment between context and its translation is then computed.
     # The output is a dictionary with context, question, answer as keys and their translation/alignment as values
-    def translate_align_content(self):
+    # TODO: use some class attributes as funcion arguments
+    def translate_align_content(self, overwrite_cached_data):
         # Load squad content and get squad contexts
         with open(self.squad_file) as hn:
             content = json.load(hn)
@@ -76,9 +77,9 @@ class SquadTranslator:
 
         # Check is the content of SQUAD has been translated and aligned already
         content_translations_alignments_file = os.path.join(self.output_dir,
-                                                            '{}_content_translations_alignments.{}'.format(
+                                                            'cached_{}_content_translations_alignments_{}.pickle'.format(
                                                                 os.path.basename(self.squad_file), self.lang_target))
-        if not os.path.isfile(content_translations_alignments_file):
+        if not os.path.isfile(content_translations_alignments_file) or overwrite_cached_data:
             # Extract contexts, questions and answers. The context is further
             # divided into sentence in order to translate and compute the alignment.
             titles = [data['title']
@@ -385,9 +386,11 @@ if __name__ == "__main__":
     parser.add_argument('--output_dir', type=str, help='directory where all the generated files are stored')
     parser.add_argument('--answers_from_alignment', action='store_true',
                         help='retrieve translated answers only from the alignment')
+    parser.add_argument('--overwrite_cached_data', action='store_true',
+                        help='Overwrite pre-computed cached data (translation and alignments)')
     parser.add_argument('--alignment_type', type=str, default='forward', help='use a given translation service')
-    parser.add_argument('--batch_size', type=int, default='1', help='batch_size for the translation script '
-                                                                     '(change this value in case of CUDA out-of-memory')
+    parser.add_argument('--batch_size', type=int, default='1',
+                        help='Translate data in batches with a given batch_size (change in case of memory errors')
     args = parser.parse_args()
 
     # Create output directory if doesn't exist already
@@ -405,7 +408,7 @@ if __name__ == "__main__":
                                  args.batch_size)
 
     logging.info('Translate SQUAD textual content and compute alignments...')
-    translator.translate_align_content()
+    translator.translate_align_content(args.overwrite_cached_data)
 
     logging.info('Translate and retrieve the SQUAD dataset...')
     translator.translate_retrieve()

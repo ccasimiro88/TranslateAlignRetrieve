@@ -455,8 +455,8 @@ def compute_alignment(source_sentences, source_lang, translated_sentences, targe
 
     with open(alignment_filename) as af:
         alignments = [a.strip() for a in af.readlines()]
-    #
-    # os.remove(source_filename)
-    # os.remove(translation_filename)
-    # os.remove(alignment_filename)
+
+    os.remove(source_filename)
+    os.remove(translation_filename)
+    os.remove(alignment_filename)
     return alignments
