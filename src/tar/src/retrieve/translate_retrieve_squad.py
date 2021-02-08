@@ -8,10 +8,16 @@ from collections import defaultdict
 import pickle
 import argparse
 import translate_retrieve_squad_utils as utils
+from transformers import MarianMTModel, MarianTokenizer
 from tqdm import tqdm
 import logging
 
 logging.basicConfig(level=logging.INFO)
+
+
+class Translator:
+    pass
+
 
 class SquadTranslator:
     def __init__(self,
@@ -31,11 +37,31 @@ class SquadTranslator:
         self.answers_from_alignment = answers_from_alignment
         self.batch_size = batch_size
 
-        # initialize content_translations_alignmentss
+        # initialize content_translations_alignments
         self.content_translations_alignments = defaultdict()
 
         # initialize SQuAD version
         self.squad_version = ''
+
+    # TODO: instantiate translator from class
+    # Translate with MariantMT with HuggingFace library
+    @staticmethod
+    def translate_marianmt(sentences, lang_src, lang_tgt, batch_size):
+        # TODO: check if src-tgt model exists
+        def batches(sentences, batch_size):
+            for i in range(0, len(sentences), batch_size):
+                yield tokenizer.prepare_seq2seq_batch(src_texts=sentences[i:i + batch_size], return_tensors='pt')
+
+        model_name = f'Helsinki-NLP/opus-mt-{lang_src}-{lang_tgt}'
+        model = MarianMTModel.from_pretrained(model_name)
+        logging.info(f"Using {model_name} MarianMT translator for {lang_src}-{lang_tgt} ")
+        tokenizer = MarianTokenizer.from_pretrained(model_name)
+        translations = []
+        batches = list(batches(sentences, batch_size))
+        for batch in tqdm(batches, desc=f'Translating with batch size {batch_size}'):
+            translated = model.generate(**batch)
+            translations.extend([tokenizer.decode(t, skip_special_tokens=True) for t in translated])
+        return translations
 
     # Translate all the textual content in the SQUAD dataset, that are, context, questions and answers.
     # The alignment between context and its translation is then computed.
@@ -50,8 +76,8 @@ class SquadTranslator:
 
         # Check is the content of SQUAD has been translated and aligned already
         content_translations_alignments_file = os.path.join(self.output_dir,
-                                                    '{}_content_translations_alignments.{}'.format(
-                                                        os.path.basename(self.squad_file), self.lang_target))
+                                                            '{}_content_translations_alignments.{}'.format(
+                                                                os.path.basename(self.squad_file), self.lang_target))
         if not os.path.isfile(content_translations_alignments_file):
             # Extract contexts, questions and answers. The context is further
             # divided into sentence in order to translate and compute the alignment.
@@ -94,12 +120,21 @@ class SquadTranslator:
 
             # Remove duplicated while keeping the order of occurrence
             # content = sorted(set(content), key=content.index)
-            content = set(content)
+            content = list(set(content))
             logging.info('Collected {} sentence to translate'.format(len(content)))
 
-            # Translate contexts, questions and answers all together and write to file.
-            # Also remove duplicates before to translate with set
-            content_translated = utils.translate(content, self.squad_file, self.output_dir, self.batch_size)
+            # Translate
+            if self.lang_target == 'es':
+                # Translate contexts, questions and answers all together and write to file.
+                # Also remove duplicates before to translate with set
+                content_translated = utils.translate(content, self.squad_file, self.output_dir, self.batch_size)
+
+            else:
+                # Use MarianMT pre-trained translation engines:
+                content_translated = self.translate_marianmt(content,
+                                                             self.lang_source,
+                                                             self.lang_target,
+                                                             self.batch_size)
 
             # Compute alignments
             context_sentence_questions_answers_alignments = utils.compute_alignment(content,
@@ -115,7 +150,7 @@ class SquadTranslator:
                                                                 content_translated,
                                                                 context_sentence_questions_answers_alignments):
                 self.content_translations_alignments[sentence] = {'translation': sentence_translated,
-                                                               'alignment': alignment}
+                                                                  'alignment': alignment}
             with open(content_translations_alignments_file, 'wb') as fn:
                 pickle.dump(self.content_translations_alignments, fn)
 
@@ -178,7 +213,8 @@ class SquadTranslator:
 
                         else:
                             for plausible_answer in qa['plausible_answers']:
-                                plausible_answer_translated = self.content_translations_alignments[plausible_answer['text']]['translation']
+                                plausible_answer_translated = \
+                                    self.content_translations_alignments[plausible_answer['text']]['translation']
                                 answer_translated, answer_translated_start = \
                                     utils.extract_answer_translated(plausible_answer,
                                                                     plausible_answer_translated,
@@ -203,8 +239,6 @@ class SquadTranslator:
                             answer['text'] = answer_translated
                             answer['answer_start'] = answer_translated_start
 
-
-
         logging.info('Cleaning and refinements...')
         # Parse the file, create a copy of the translated version and clean it from empty answers
         content_translated = content
@@ -221,7 +255,7 @@ class SquadTranslator:
                     question = qa['question']
 
                     # Extract answers and plausible answers for SQUAD v2.0
-                    if self.squad_version  == 'v2.0':
+                    if self.squad_version == 'v2.0':
                         if not qa['is_impossible']:
                             correct_answers = []
                             for a in qa['answers']:
@@ -315,51 +349,52 @@ class SquadTranslator:
             json.dump(content_cleaned, fn)
 
         # Count correct answers and plausible answers for SQUAD v2.0
-        if self.squad_version  == 'v2.0':
+        if self.squad_version == 'v2.0':
             total_correct = total_correct_answers + total_correct_plausible_answers
-            accuracy = round((total_correct/ total_answers) * 100, 2)
+            accuracy = round((total_correct / total_answers) * 100, 2)
             logging.info('File: {}:\n'
-                  'Percentage of translated examples (correct answers/total answers): {}/{} = {}%\n'
-                  'No. of answers: {}\n'
-                  'No. of plausible answers: {}'.format(os.path.basename(translated_file),
-                                                       total_correct,
-                                                       total_answers,
-                                                       accuracy,
-                                                       total_correct_answers,
-                                                       total_correct_plausible_answers))
+                         'Percentage of translated examples (correct answers/total answers): {}/{} = {}%\n'
+                         'No. of answers: {}\n'
+                         'No. of plausible answers: {}'.format(os.path.basename(translated_file),
+                                                               total_correct,
+                                                               total_answers,
+                                                               accuracy,
+                                                               total_correct_answers,
+                                                               total_correct_plausible_answers))
 
         # Count correct answers
         else:
             total_correct = total_correct_answers
-            accuracy = round((total_correct/ total_answers) * 100, 2)
+            accuracy = round((total_correct / total_answers) * 100, 2)
             logging.info('File: {}:\n'
-                  'Percentage of translated examples (correct answers/total answers): {}/{} = {}%\n'
-                  'No. of answers: {}'.format(os.path.basename(translated_file),
-                                                              total_correct,
-                                                              total_answers,
-                                                              accuracy,
-                                                          total_correct_answers))
+                         'Percentage of translated examples (correct answers/total answers): {}/{} = {}%\n'
+                         'No. of answers: {}'.format(os.path.basename(translated_file),
+                                                     total_correct,
+                                                     total_answers,
+                                                     accuracy,
+                                                     total_correct_answers))
+
 
 if __name__ == "__main__":
     start = time.time()
     parser = argparse.ArgumentParser()
-    parser.add_argument('-squad_file', type=str, help='SQUAD dataset to translate')
-    parser.add_argument('-lang_source', type=str, default='en',
-                        help='language of the SQUAD dataset to translate (the default valueis set to English)')
-    parser.add_argument('-lang_target', type=str, help='translation language')
-    parser.add_argument('-output_dir', type=str, help='directory where all the generated files are stored')
-    parser.add_argument('-answers_from_alignment', action='store_true',
+    parser.add_argument('--squad_file', type=str, help='SQUAD dataset to translate')
+    parser.add_argument('--lang_source', type=str, default='en',
+                        help='language of the SQUAD dataset to translate (the default value set to English)')
+    parser.add_argument('--lang_target', type=str, help='translation language')
+    parser.add_argument('--output_dir', type=str, help='directory where all the generated files are stored')
+    parser.add_argument('--answers_from_alignment', action='store_true',
                         help='retrieve translated answers only from the alignment')
-    parser.add_argument('-alignment_type', type=str, default='forward', help='use a given translation service')
-    parser.add_argument('-batch_size', type=int, default='32', help='batch_size for the translation script '
-                                                                    '(change this value in case of CUDA out-of-memory')
+    parser.add_argument('--alignment_type', type=str, default='forward', help='use a given translation service')
+    parser.add_argument('--batch_size', type=int, default='32', help='batch_size for the translation script '
+                                                                     '(change this value in case of CUDA out-of-memory')
     args = parser.parse_args()
 
     # Create output directory if doesn't exist already
     try:
         os.mkdir(args.output_dir)
     except FileExistsError:
-        pass
+        logging.error(f'Output dir already exists: {args.output_dir}')
 
     translator = SquadTranslator(args.squad_file,
                                  args.lang_source,
