@@ -12,10 +12,7 @@ from transformers import MarianMTModel, MarianTokenizer
 from tqdm import tqdm
 import torch
 import logging
-
-logging.basicConfig(level=logging.INFO)
-
-DEVICE = torch.cuda.current_device()
+import random
 
 
 class Translator:
@@ -40,11 +37,18 @@ class SquadTranslator:
         self.answers_from_alignment = answers_from_alignment
         self.batch_size = batch_size
 
-        # initialize content_translations_alignments
+        self.squad_version = None
+        self.dataset = None
         self.content_translations_alignments = defaultdict()
 
-        # initialize SQuAD version
-        self.squad_version = ''
+    @staticmethod
+    def load_dataset(dataset_file, sample_size):
+        with open(dataset_file) as hn:
+            dataset = json.load(hn)
+        if sample_size:
+            dataset = {'version': dataset['version'],
+                       'data': random.sample(dataset['data'], sample_size)}
+        return dataset
 
     # TODO: instantiate translator from class
     # Translate with MariantMT with HuggingFace library
@@ -71,13 +75,12 @@ class SquadTranslator:
     # The alignment between context and its translation is then computed.
     # The output is a dictionary with context, question, answer as keys and their translation/alignment as values
     # TODO: use some class attributes as funcion arguments
-    def translate_align_content(self, overwrite_cached_data):
+    def translate_align_content(self, overwrite_cached_data, sample_size):
         # Load squad content and get squad contexts
-        with open(self.squad_file) as hn:
-            content = json.load(hn)
+        dataset = self.dataset = self.load_dataset(self.squad_file, sample_size)
 
         # Get SQuAD version
-        self.squad_version = content['version']
+        self.squad_version = dataset['version']
 
         # Check is the content of SQUAD has been translated and aligned already
         content_translations_alignments_file = os.path.join(self.output_dir,
@@ -87,24 +90,24 @@ class SquadTranslator:
             # Extract contexts, questions and answers. The context is further
             # divided into sentence in order to translate and compute the alignment.
             titles = [data['title']
-                      for data in tqdm(content['data'])]
+                      for data in tqdm(dataset['data'], desc='Get Titles')]
             context_sentences = [context_sentence
-                                 for data in tqdm(content['data'])
-                                 for paragraph in tqdm(data['paragraphs'])
+                                 for data in tqdm(dataset['data'], 'Get paragraphs')
+                                 for paragraph in data['paragraphs']
                                  for context_sentence in
                                  tqdm(utils.tokenize_sentences(utils.remove_line_breaks(paragraph['context']),
                                                                lang=self.lang_source))
                                  if context_sentence]
 
             questions = [qa['question']
-                         for data in tqdm(content['data'])
-                         for paragraph in tqdm(data['paragraphs'])
+                         for data in tqdm(dataset['data'], desc='Get Questions')
+                         for paragraph in data['paragraphs']
                          for qa in paragraph['qas']
                          if qa['question']]
 
             answers = [answer['text']
-                       for data in tqdm(content['data'])
-                       for paragraph in tqdm(data['paragraphs'])
+                       for data in tqdm(dataset['data'], desc='Get answers')
+                       for paragraph in data['paragraphs']
                        for qa in paragraph['qas']
                        for answer in qa['answers']
                        if answer['text']]
@@ -112,7 +115,7 @@ class SquadTranslator:
             # extract plausible answers when 'is_impossible == True' for SQUAD v2.0
             if self.squad_version == 'v2.0':
                 plausible_answers = []
-                for data in tqdm(content['data']):
+                for data in tqdm(dataset['data']):
                     for paragraph in tqdm(data['paragraphs']):
                         for qa in paragraph['qas']:
                             if qa['is_impossible']:
@@ -176,10 +179,9 @@ class SquadTranslator:
     # 2) If the previous two steps fail, optionally extract the answer from the context translated
     # using the answer start and answer end provided by the alignment
     def translate_retrieve(self):
-        with open(self.squad_file) as fn:
-            content = json.load(fn)
+        dataset = self.dataset
 
-        for data in tqdm(content['data']):
+        for data in tqdm(dataset['data']):
             title = data['title']
             data['title'] = self.content_translations_alignments[title]['translation']
             for paragraphs in data['paragraphs']:
@@ -246,8 +248,8 @@ class SquadTranslator:
 
         logging.info('Cleaning and refinements...')
         # Parse the file, create a copy of the translated version and clean it from empty answers
-        content_translated = content
-        content_cleaned = {'version': content['version'], 'data': []}
+        content_translated = dataset
+        content_cleaned = {'version': dataset['version'], 'data': []}
         total_answers = 0
         total_correct_plausible_answers = 0
         total_correct_answers = 0
@@ -278,7 +280,7 @@ class SquadTranslator:
                                     correct_plausible_answers.append(pa)
                             correct_answers = []
 
-                        # add answers and plausible answers to the content cleaned
+                        # add answers and plausible answers to the dataset cleaned
                         if correct_answers:
                             content_qas_id = qa['id']
                             content_qas_is_impossible = qa['is_impossible']
@@ -318,7 +320,7 @@ class SquadTranslator:
                                 total_correct_answers += 1
                                 correct_answers.append(a)
 
-                        # add answers and plausible answers to the content cleaned
+                        # add answers and plausible answers to the dataset cleaned
                         if correct_answers:
                             content_qas_id = qa['id']
                             correct_answers_from_context = []
@@ -338,7 +340,7 @@ class SquadTranslator:
                     content_cleaned['data'][idx_data]['paragraphs'].append(
                         {'context': content_context, 'qas': qas_cleaned})
 
-        # Write the content back to the translated dataset
+        # Write the dataset back to the translated dataset
         if self.answers_from_alignment:
             translated_file = os.path.join(self.output_dir,
                                            os.path.basename(self.squad_file).replace(
@@ -395,6 +397,8 @@ if __name__ == "__main__":
     parser.add_argument('--alignment_type', type=str, default='forward', help='use a given translation service')
     parser.add_argument('--batch_size', type=int, default='8',
                         help='Translate data in batches with a given batch_size (change in case of memory errors')
+    parser.add_argument('--seed', type=int, default='1', help='Seed for random data selections')
+    parser.add_argument('--sample_size', type=int, help='Sampling N random articles to translate from input file')
     args = parser.parse_args()
 
     # Create output directory if doesn't exist already
@@ -402,6 +406,10 @@ if __name__ == "__main__":
         os.mkdir(args.output_dir)
     except FileExistsError:
         logging.error(f'Output dir already exists: {args.output_dir}')
+
+    logging.basicConfig(level=logging.INFO)
+    DEVICE = torch.cuda.current_device()
+    random.seed(args.seed)
 
     translator = SquadTranslator(args.squad_file,
                                  args.lang_source,
@@ -411,10 +419,11 @@ if __name__ == "__main__":
                                  args.answers_from_alignment,
                                  args.batch_size)
 
-    logging.info('Translate SQUAD textual content and compute alignments...')
-    translator.translate_align_content(args.overwrite_cached_data)
+    logging.info('Translate SQUAD textual content and compute alignments')
+    logging.info(f'Sampling {args.sample_size} articles from {args.squad_file}')
+    translator.translate_align_content(args.overwrite_cached_data, args.sample_size)
 
-    logging.info('Translate and retrieve the SQUAD dataset...')
+    logging.info('Translate and retrieve the SQUAD dataset')
     translator.translate_retrieve()
 
     end = time.time()

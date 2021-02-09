@@ -431,7 +431,6 @@ def translate(source_sentences, file, output_dir, batch_size):
 # Compute alignment between source and target sentences
 def compute_alignment(source_sentences, source_lang, translated_sentences, target_lang,
                       alignment_type, file, output_dir):
-    import pdb; pdb.set_trace()
     filename = os.path.basename(file)
     source_sentences = [tokenize(sentence, source_lang) for sentence in source_sentences]
     translated_sentences = [tokenize(sentence, target_lang) for sentence in translated_sentences]
