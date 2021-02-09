@@ -10,9 +10,12 @@ import argparse
 import translate_retrieve_squad_utils as utils
 from transformers import MarianMTModel, MarianTokenizer
 from tqdm import tqdm
+import torch
 import logging
 
 logging.basicConfig(level=logging.INFO)
+
+DEVICE = torch.cuda.current_device()
 
 
 class Translator:
@@ -48,17 +51,18 @@ class SquadTranslator:
     @staticmethod
     def translate_marianmt(sentences, lang_src, lang_tgt, batch_size):
         # TODO: check if src-tgt model exists
-        def batches(sentences, batch_size):
+        def chunks(sentences, batch_size):
             for i in range(0, len(sentences), batch_size):
-                yield tokenizer.prepare_seq2seq_batch(src_texts=sentences[i:i + batch_size], return_tensors='pt')
+                yield sentences[i:i + batch_size]
 
         model_name = f'Helsinki-NLP/opus-mt-{lang_src}-{lang_tgt}'
-        model = MarianMTModel.from_pretrained(model_name)
+        model = MarianMTModel.from_pretrained(model_name).to(DEVICE).half()
         logging.info(f"Using {model_name} MarianMT translator for {lang_src}-{lang_tgt} ")
         tokenizer = MarianTokenizer.from_pretrained(model_name)
         translations = []
-        batches = list(batches(sentences, batch_size))
-        for batch in tqdm(batches, desc=f'Translating with batch size {batch_size}'):
+        batches = list(chunks(sentences, batch_size))
+        for chunk in tqdm(batches, desc=f'Translating with batch size {batch_size}'):
+            batch = tokenizer.prepare_seq2seq_batch(src_texts=chunk, return_tensors='pt').to(DEVICE)
             translated = model.generate(**batch)
             translations.extend([tokenizer.decode(t, skip_special_tokens=True) for t in translated])
         return translations
@@ -389,7 +393,7 @@ if __name__ == "__main__":
     parser.add_argument('--overwrite_cached_data', action='store_true',
                         help='Overwrite pre-computed cached data (translation and alignments)')
     parser.add_argument('--alignment_type', type=str, default='forward', help='use a given translation service')
-    parser.add_argument('--batch_size', type=int, default='1',
+    parser.add_argument('--batch_size', type=int, default='8',
                         help='Translate data in batches with a given batch_size (change in case of memory errors')
     args = parser.parse_args()
 
