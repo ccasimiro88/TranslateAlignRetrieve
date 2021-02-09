@@ -161,7 +161,7 @@ class SquadTranslator:
 
         # Load content translated and aligned from file
         else:
-            logging.info('Use previously content translations and alignments')
+            logging.info('Using cached data previously computed (translations and alignments')
             with open(content_translations_alignments_file, 'rb') as fn:
                 self.content_translations_alignments = pickle.load(fn)
 

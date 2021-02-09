@@ -19,19 +19,17 @@ export LC_ALL=en_US.UTF8
 TOOLS_DIR=${SCRIPT_DIR}/../../tools
 EFLOMAL_DIR=${TOOLS_DIR}/eflomal
 FASTALIGN_DIR=${TOOLS_DIR}/fast_align
-MOSES_DIR=${TOOLS_DIR}/mosesdecoder
 
 echo 'Compute alignments...'
 FWD_ALIGN=$(mktemp)
 REV_ALIGN=$(mktemp)
 SYM_ALIGN=$(mktemp)
 
-if [[ ! -z $PRIORS_DIR ]]; then
-  PRIORS_DIR=${SCRIPT_DIR}/../alignment/data
+if [[ -n $PRIORS_DIR ]]; then
   python ${EFLOMAL_DIR}/align.py \
           -s ${FILE_SRC} \
           -t ${FILE_TGT} \
-          --priors ${PRIORS_DIR}/align.priors*\
+          --priors ${PRIORS_DIR}/align.priors* \
           --model 3 \
           -f ${FWD_ALIGN} \
           -r ${REV_ALIGN} \
@@ -62,3 +60,4 @@ elif [[ "$ALIGNMENT_TYPE" == "symmetric" ]]; then
 fi
 
 rm ${FWD_ALIGN} ${REV_ALIGN} ${SYM_ALIGN}
+echo "alignment file wrote to: $(realpath $OUTPUT_FILE)"

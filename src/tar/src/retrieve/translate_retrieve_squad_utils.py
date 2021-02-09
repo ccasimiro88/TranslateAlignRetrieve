@@ -431,20 +431,21 @@ def translate(source_sentences, file, output_dir, batch_size):
 # Compute alignment between source and target sentences
 def compute_alignment(source_sentences, source_lang, translated_sentences, target_lang,
                       alignment_type, file, output_dir):
+    import pdb; pdb.set_trace()
     filename = os.path.basename(file)
     source_sentences = [tokenize(sentence, source_lang) for sentence in source_sentences]
     translated_sentences = [tokenize(sentence, target_lang) for sentence in translated_sentences]
 
-    source_filename = os.path.join(output_dir, '{}_source_align'.format(filename))
+    source_filename = os.path.join(output_dir, f'cached_{filename}_source_align')
     with open(source_filename, 'w') as sf:
         sf.writelines('\n'.join(s for s in source_sentences))
 
-    translation_filename = os.path.join(output_dir, '{}_target_align'.format(filename))
+    translation_filename = os.path.join(output_dir, f'cached_{filename}_target_align')
     with open(translation_filename, 'w') as tf:
         tf.writelines('\n'.join(s for s in translated_sentences))
 
     # TODO: add the case with priors
-    alignment_filename = os.path.join(output_dir, 'alignment')
+    alignment_filename = os.path.join(output_dir, f'cached_{filename}_alignment')
     efolmal_cmd = SCRIPT_DIR + '/../alignment/compute_alignment.sh {} {} {} {} {} {}'.format(source_filename,
                                                                                              source_lang,
                                                                                              translation_filename,
@@ -456,7 +457,7 @@ def compute_alignment(source_sentences, source_lang, translated_sentences, targe
     with open(alignment_filename) as af:
         alignments = [a.strip() for a in af.readlines()]
 
-    os.remove(source_filename)
-    os.remove(translation_filename)
-    os.remove(alignment_filename)
+    # os.remove(source_filename)
+    # os.remove(translation_filename)
+    # os.remove(alignment_filename)
     return alignments

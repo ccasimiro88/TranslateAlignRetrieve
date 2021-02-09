@@ -25,9 +25,10 @@ git clone https://github.com/facebookresearch/LASER.git ${LASER_DIR}
 EFLOMAL_DIR=${TOOLS_DIR}/eflomal
 git clone https://github.com/robertostling/eflomal.git ${TOOLS_DIR}/eflomal
 cd ${EFLOMAL_DIR}
+mkdir ${EFLOMAL_DIR}/bin
 make
-make install
-pip install .
+make install -e INSTALLDIR=${EFLOMAL_DIR}/bin
+python setup.py install
 cd ${SCRIPT_DIR}
 
 # FastAlign
