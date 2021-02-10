@@ -39,9 +39,15 @@ class Translator:
             translations.extend([tokenizer.decode(t, skip_special_tokens=True) for t in translated])
         return translations
 
-    def translate(self, sentences, lang_source, lang_target, batch_size):
+    def translate(self, sentences, lang_source, lang_target, batch_size, lang_pivot):
         if self.translation_engine == 'marianmt_hf':
-            return self.marianmt_hf(sentences, lang_source, lang_target, batch_size)
+            # Back-translate using pivot language
+            if lang_pivot:
+                logging.info(f"Using back-translation with pivot language {lang_pivot}")
+                return self.marianmt_hf(self.marianmt_hf(sentences, lang_source, lang_pivot, batch_size),
+                                        lang_pivot, lang_target, batch_size)
+            else:
+                return self.marianmt_hf(sentences, lang_source, lang_target, batch_size)
         else:
             raise NotImplementedError
 
@@ -73,6 +79,7 @@ class SquadTranslator:
         with open(dataset_file) as hn:
             dataset = json.load(hn)
         if sample_size:
+            logging.info(f'Sampling {args.sample_size} articles from {args.squad_file}')
             dataset = {'version': dataset['version'],
                        'data': random.sample(dataset['data'], sample_size)}
         return dataset
@@ -81,7 +88,7 @@ class SquadTranslator:
     # The alignment between context and its translation is then computed.
     # The output is a dictionary with context, question, answer as keys and their translation/alignment as values
     # TODO: use some class attributes as funcion arguments
-    def translate_align_content(self, overwrite_cached_data, sample_size, translation_engine):
+    def translate_align_content(self, overwrite_cached_data, sample_size, translation_engine, lang_pivot):
         # Load squad content and get squad contexts
         dataset = self.dataset = self.load_dataset(self.squad_file, sample_size)
 
@@ -145,7 +152,8 @@ class SquadTranslator:
                 content_translated = translator.translate(content,
                                                           self.lang_source,
                                                           self.lang_target,
-                                                          self.batch_size)
+                                                          self.batch_size,
+                                                          lang_pivot)
             elif translation_engine == 'opennmt_en-es':
                 if self.lang_target == 'es':
                     # Translate contexts, questions and answers all together and write to file.
@@ -413,6 +421,7 @@ if __name__ == "__main__":
     parser.add_argument('--sample_size', type=int, help='Sampling N random articles to translate from input file')
     parser.add_argument('--translation_engine', type=str, default='marianmt_hf',
                         help='Select translation engines (marianmt_hf or opennmt_en-es')
+    parser.add_argument('--lang_pivot', type=str, help='Use pivot language to perform back-translation')
     args = parser.parse_args()
     # Create output directory if doesn't exist already
     os.makedirs(args.output_dir, exist_ok=True)
@@ -421,16 +430,16 @@ if __name__ == "__main__":
     random.seed(args.seed)
 
     squadtranslator = SquadTranslator(args.squad_file,
-                                 args.lang_source,
-                                 args.lang_target,
-                                 args.output_dir,
-                                 args.alignment_type,
-                                 args.answers_from_alignment,
-                                 args.batch_size)
+                                      args.lang_source,
+                                      args.lang_target,
+                                      args.output_dir,
+                                      args.alignment_type,
+                                      args.answers_from_alignment,
+                                      args.batch_size)
 
     logging.info('Translate SQUAD textual content and compute alignments')
-    if args.sample_size: logging.info(f'Sampling {args.sample_size} articles from {args.squad_file}')
-    squadtranslator.translate_align_content(args.overwrite_cached_data, args.sample_size, args.translation_engine)
+    squadtranslator.translate_align_content(args.overwrite_cached_data, args.sample_size,
+                                            args.translation_engine, args.lang_pivot)
 
     logging.info('Translate and retrieve the SQUAD dataset')
     squadtranslator.translate_retrieve()
