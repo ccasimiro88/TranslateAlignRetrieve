@@ -61,44 +61,46 @@ def remove_extra_punct(source, translation):
     brackets = [['(', ')'], ['[', ']'], ['{', '}']]
     exclamation = '¡!'
     quotation = '"'
-    if len(translation) != 1:
-        # Remove extra periods or commas
-        if source[-1] in periods_commas and translation[-1] in periods_commas:
-            translation = translation
+    try:
+        if len(translation) != 1:
+            # Remove extra periods or commas
+            if source[-1] in periods_commas and translation[-1] in periods_commas:
+                translation = translation
+            else:
+                if source[-1] in periods_commas and translation[-1] not in periods_commas:
+                    translation = translation + source[-1]
+                elif source[-1] not in periods_commas and translation[-1] in periods_commas:
+                    translation = translation.strip(translation[-1])
+            # remove brackets
+            if translation[-1] in [b[1] for b in brackets] and any(c for c in translation if c in [b[0] for b in brackets]):
+                translation = translation
+            else:
+                for bracket in brackets:
+                    if translation[-1] in bracket[1] and translation[0] not in bracket[0]:
+                        translation = translation[:-1]
+                    elif translation[-1] not in bracket[1] and translation[0] in bracket[0]:
+                        translation = translation[1:]
+            # Complete exclamation mark
+            if translation[-1] in exclamation and translation[0] in exclamation:
+                translation = translation
+            else:
+                if translation[-1] in exclamation and translation[0] not in exclamation:
+                    translation = exclamation[0] + translation
+                elif translation[-1] not in exclamation and translation[0] in exclamation:
+                    translation = translation + exclamation[1]
+            # Complete quotation
+            if translation[-1] in quotation and translation[0] in quotation:
+                translation = translation
+            else:
+                if translation[-1] in quotation and translation[0] not in quotation:
+                    translation = quotation + translation
+                elif translation[-1] not in quotation and translation[0] in quotation:
+                    translation = translation + quotation
+            return translation
         else:
-            if source[-1] in periods_commas and translation[-1] not in periods_commas:
-                translation = translation + source[-1]
-            elif source[-1] not in periods_commas and translation[-1] in periods_commas:
-                translation = translation.strip(translation[-1])
-        # remove brackets
-        if translation[-1] in [b[1] for b in brackets] and any(c for c in translation if c in [b[0] for b in brackets]):
-            translation = translation
-        else:
-            for bracket in brackets:
-                if translation[-1] in bracket[1] and translation[0] not in bracket[0]:
-                    translation = translation[:-1]
-                elif translation[-1] not in bracket[1] and translation[0] in bracket[0]:
-                    translation = translation[1:]
-        # Complete exclamation mark
-        if translation[-1] in exclamation and translation[0] in exclamation:
-            translation = translation
-        else:
-            if translation[-1] in exclamation and translation[0] not in exclamation:
-                translation = exclamation[0] + translation
-            elif translation[-1] not in exclamation and translation[0] in exclamation:
-                translation = translation + exclamation[1]
-        # Complete quotation
-        if translation[-1] in quotation and translation[0] in quotation:
-            translation = translation
-        else:
-            if translation[-1] in quotation and translation[0] not in quotation:
-                translation = quotation + translation
-            elif translation[-1] not in quotation and translation[0] in quotation:
-                translation = translation + quotation
+            return translation
+    except IndexError:
         return translation
-    else:
-        return translation
-
 
 # Keep the first part when the answer translation come across
 # two sentences or when there are extra commas with words

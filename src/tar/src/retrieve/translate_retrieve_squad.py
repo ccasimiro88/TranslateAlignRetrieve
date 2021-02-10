@@ -16,7 +16,34 @@ import random
 
 
 class Translator:
-    pass
+    def __init__(self, translation_engine):
+        self.translation_engine = translation_engine
+
+    # Translate with MariantMT with HuggingFace library
+    @staticmethod
+    def marianmt_hf(sentences, lang_source, lang_target, batch_size):
+        # TODO: check if src-tgt model exists
+        def chunks(sentences, batch_size):
+            for i in range(0, len(sentences), batch_size):
+                yield sentences[i:i + batch_size]
+
+        model_name = f'Helsinki-NLP/opus-mt-{lang_source}-{lang_target}'
+        model = MarianMTModel.from_pretrained(model_name).to(DEVICE).half()
+        logging.info(f"Using {model_name} MarianMT translator for {lang_source}-{lang_target} ")
+        tokenizer = MarianTokenizer.from_pretrained(model_name)
+        translations = []
+        batches = list(chunks(sentences, batch_size))
+        for chunk in tqdm(batches, desc=f'Translating with batch size {batch_size}'):
+            batch = tokenizer.prepare_seq2seq_batch(src_texts=chunk, return_tensors='pt').to(DEVICE)
+            translated = model.generate(**batch)
+            translations.extend([tokenizer.decode(t, skip_special_tokens=True) for t in translated])
+        return translations
+
+    def translate(self, sentences, lang_source, lang_target, batch_size):
+        if self.translation_engine == 'marianmt_hf':
+            return self.marianmt_hf(sentences, lang_source, lang_target, batch_size)
+        else:
+            raise NotImplementedError
 
 
 class SquadTranslator:
@@ -50,32 +77,11 @@ class SquadTranslator:
                        'data': random.sample(dataset['data'], sample_size)}
         return dataset
 
-    # TODO: instantiate translator from class
-    # Translate with MariantMT with HuggingFace library
-    @staticmethod
-    def translate_marianmt(sentences, lang_src, lang_tgt, batch_size):
-        # TODO: check if src-tgt model exists
-        def chunks(sentences, batch_size):
-            for i in range(0, len(sentences), batch_size):
-                yield sentences[i:i + batch_size]
-
-        model_name = f'Helsinki-NLP/opus-mt-{lang_src}-{lang_tgt}'
-        model = MarianMTModel.from_pretrained(model_name).to(DEVICE).half()
-        logging.info(f"Using {model_name} MarianMT translator for {lang_src}-{lang_tgt} ")
-        tokenizer = MarianTokenizer.from_pretrained(model_name)
-        translations = []
-        batches = list(chunks(sentences, batch_size))
-        for chunk in tqdm(batches, desc=f'Translating with batch size {batch_size}'):
-            batch = tokenizer.prepare_seq2seq_batch(src_texts=chunk, return_tensors='pt').to(DEVICE)
-            translated = model.generate(**batch)
-            translations.extend([tokenizer.decode(t, skip_special_tokens=True) for t in translated])
-        return translations
-
     # Translate all the textual content in the SQUAD dataset, that are, context, questions and answers.
     # The alignment between context and its translation is then computed.
     # The output is a dictionary with context, question, answer as keys and their translation/alignment as values
     # TODO: use some class attributes as funcion arguments
-    def translate_align_content(self, overwrite_cached_data, sample_size):
+    def translate_align_content(self, overwrite_cached_data, sample_size, translation_engine):
         # Load squad content and get squad contexts
         dataset = self.dataset = self.load_dataset(self.squad_file, sample_size)
 
@@ -132,19 +138,24 @@ class SquadTranslator:
             logging.info('Collected {} sentence to translate'.format(len(content)))
 
             # Translate
-            if self.lang_target == 'es':
-                # Translate contexts, questions and answers all together and write to file.
-                # Also remove duplicates before to translate with set
-                content_translated = utils.translate(content, self.squad_file, self.output_dir, self.batch_size)
-
-            else:
+            content_translated = []
+            if translation_engine == 'marianmt_hf':
+                translator = Translator(translation_engine=translation_engine)
                 # Use MarianMT pre-trained translation engines:
-                content_translated = self.translate_marianmt(content,
-                                                             self.lang_source,
-                                                             self.lang_target,
-                                                             self.batch_size)
+                content_translated = translator.translate(content,
+                                                          self.lang_source,
+                                                          self.lang_target,
+                                                          self.batch_size)
+            elif translation_engine == 'opennmt_en-es':
+                if self.lang_target == 'es':
+                    # Translate contexts, questions and answers all together and write to file.
+                    # Also remove duplicates before to translate with set
+                    content_translated = utils.translate(content, self.squad_file, self.output_dir, self.batch_size)
+            else:
+                raise ValueError(f"Unsupported translation engine {translation_engine}")
 
             # Compute alignments
+            assert content_translated, 'Content translation is empty!'
             context_sentence_questions_answers_alignments = utils.compute_alignment(content,
                                                                                     self.lang_source,
                                                                                     content_translated,
@@ -152,6 +163,7 @@ class SquadTranslator:
                                                                                     self.alignment_type,
                                                                                     self.squad_file,
                                                                                     self.output_dir)
+            assert context_sentence_questions_answers_alignments, 'Alignment is empty!'
 
             # Add translations and alignments
             for sentence, sentence_translated, alignment in zip(content,
@@ -399,19 +411,16 @@ if __name__ == "__main__":
                         help='Translate data in batches with a given batch_size (change in case of memory errors')
     parser.add_argument('--seed', type=int, default='1', help='Seed for random data selections')
     parser.add_argument('--sample_size', type=int, help='Sampling N random articles to translate from input file')
+    parser.add_argument('--translation_engine', type=str, default='marianmt_hf',
+                        help='Select translation engines (marianmt_hf or opennmt_en-es')
     args = parser.parse_args()
-
     # Create output directory if doesn't exist already
-    try:
-        os.mkdir(args.output_dir)
-    except FileExistsError:
-        logging.error(f'Output dir already exists: {args.output_dir}')
-
+    os.makedirs(args.output_dir, exist_ok=True)
     logging.basicConfig(level=logging.INFO)
     DEVICE = torch.cuda.current_device()
     random.seed(args.seed)
 
-    translator = SquadTranslator(args.squad_file,
+    squadtranslator = SquadTranslator(args.squad_file,
                                  args.lang_source,
                                  args.lang_target,
                                  args.output_dir,
@@ -420,11 +429,11 @@ if __name__ == "__main__":
                                  args.batch_size)
 
     logging.info('Translate SQUAD textual content and compute alignments')
-    logging.info(f'Sampling {args.sample_size} articles from {args.squad_file}')
-    translator.translate_align_content(args.overwrite_cached_data, args.sample_size)
+    if args.sample_size: logging.info(f'Sampling {args.sample_size} articles from {args.squad_file}')
+    squadtranslator.translate_align_content(args.overwrite_cached_data, args.sample_size, args.translation_engine)
 
     logging.info('Translate and retrieve the SQUAD dataset')
-    translator.translate_retrieve()
+    squadtranslator.translate_retrieve()
 
     end = time.time()
     logging.info('Total execution time: {} s'.format(round(end - start)))
