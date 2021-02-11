@@ -5,7 +5,6 @@ import csv
 from tqdm import tqdm
 import os
 from collections import defaultdict
-import pickle
 import argparse
 import translate_squad_utils as utils
 from transformers import MarianMTModel, MarianTokenizer
@@ -24,21 +23,24 @@ class Aligner:
     # TODO: implement priors for eflomal
     @staticmethod
     def eflomal(source_sentences, source_lang, translated_sentences, target_lang,
-                alignment_type, file, output_dir):
+                alignment_type, file):
         filename = os.path.basename(file)
         source_sentences = [utils.tokenize(sentence, source_lang) for sentence in source_sentences]
         translated_sentences = [utils.tokenize(sentence, target_lang) for sentence in translated_sentences]
 
-        source_filename = os.path.join(output_dir, f'cached_{filename}_source_align')
+        # source_filename = os.path.join(output_dir, '.cached', f'{filename}_source_align')
+        source_filename = tempfile.NamedTemporaryFile().name
         with open(source_filename, 'w') as sf:
             sf.writelines('\n'.join(s for s in source_sentences))
 
-        translation_filename = os.path.join(output_dir, f'cached_{filename}_target_align')
+        # translation_filename = os.path.join(output_dir, f'cached_{filename}_target_align')
+        translation_filename = tempfile.NamedTemporaryFile().name
         with open(translation_filename, 'w') as tf:
             tf.writelines('\n'.join(s for s in translated_sentences))
 
         # TODO: add the case with priors
-        alignment_filename = os.path.join(output_dir, f'cached_{filename}_alignment')
+        # alignment_filename = os.path.join(output_dir, f'cached_{filename}_alignment')
+        alignment_filename = tempfile.NamedTemporaryFile().name
         efolmal_cmd = SCRIPT_DIR + f'/../alignment/compute_alignment.sh ' \
                                    f'{source_filename} {source_lang} {translation_filename} {target_lang}' \
                                    f' {alignment_type} {alignment_filename}'
@@ -47,9 +49,9 @@ class Aligner:
         with open(alignment_filename) as af:
             alignments = [a.strip() for a in af.readlines()]
 
-        # os.remove(source_filename)
-        # os.remove(translation_filename)
-        # os.remove(alignment_filename)
+        os.remove(source_filename)
+        os.remove(translation_filename)
+        os.remove(alignment_filename)
         return alignments
 
     def align(self, *alignment_args):
@@ -218,9 +220,12 @@ class SquadTranslator:
         self.squad_version = dataset['version']
 
         # Check is the content of SQUAD has been translated and aligned already
-        content_translations_alignments_file = os.path.join(self.output_dir,
-                                                            'cached_{}_content_translations_alignments_{}.pickle'.format(
-                                                                os.path.basename(self.squad_file), self.lang_target))
+        content_translations_alignments_file = os.path.join(self.output_dir, '.cached/',
+                                                            '{}_content_translations_alignments_{}-{}.json'.format(
+                                                                os.path.basename(self.squad_file),
+                                                                self.lang_source,
+                                                                self.lang_target))
+        os.makedirs(os.path.dirname(content_translations_alignments_file), exist_ok=True)
         if not os.path.isfile(content_translations_alignments_file) or overwrite_cached_data:
             # Extract content
             content = self.extract_content(dataset)
@@ -232,48 +237,35 @@ class SquadTranslator:
                                                       self.lang_source,
                                                       self.lang_target,
                                                       lang_pivot)
-            # if translation_engine == 'marianmt_hf':
-            #     translator = Translator(translation_engine=translation_engine)
-            #     # Use MarianMT pre-trained translation engines:
-            #     content_translated = translator.translate(content,
-            #                                               self.lang_source,
-            #                                               self.lang_target,
-            #                                               self.batch_size,
-            #                                               lang_pivot)
-            # elif translation_engine == 'opennmt_en-es':
-            #     if self.lang_target == 'es':
-            #         # Translate contexts, questions and answers all together and write to file.
-            #         # Also remove duplicates before to translate with set
-            #         content_translated = utils.opennmt_en_es(content, self.squad_file, self.output_dir, self.batch_size)
-            # else:
-            #     raise ValueError(f"Unsupported translation engine {translation_engine}")
 
-            # Compute alignments
+            # Align
             assert content_translated, 'Content translation is empty!'
             aligner = Aligner(alignment_model=alignment_model)
-            context_sentence_questions_answers_alignments = aligner.align(content,
-                                                                          self.lang_source,
-                                                                          content_translated,
-                                                                          self.lang_target,
-                                                                          self.alignment_type,
-                                                                          self.squad_file,
-                                                                          self.output_dir)
-            assert context_sentence_questions_answers_alignments, 'Alignment is empty!'
+            content_alignments = aligner.align(content,
+                                               self.lang_source,
+                                               content_translated,
+                                               self.lang_target,
+                                               self.alignment_type,
+                                               self.squad_file)
+            assert content_alignments, 'Alignment is empty!'
 
-            # Add translations and alignments
+            # Add original sentence, the corresponding translations and the alignments
             for sentence, sentence_translated, alignment in zip(content,
                                                                 content_translated,
-                                                                context_sentence_questions_answers_alignments):
-                self.content_translations_alignments[sentence] = {'translation': sentence_translated,
+                                                                content_alignments):
+                self.content_translations_alignments[sentence] = {'source': sentence,
+                                                                  'translation': sentence_translated,
                                                                   'alignment': alignment}
-            with open(content_translations_alignments_file, 'wb') as fn:
-                pickle.dump(self.content_translations_alignments, fn)
+            with open(content_translations_alignments_file, 'w') as fn:
+                json.dump(self.content_translations_alignments, fn)
 
         # Load content translated and aligned from file
         else:
-            logging.info('Using cached data previously computed (translations and alignments')
+            logging.info(
+                f'Using cached data (translations and alignments) from: '
+                f'{os.path.realpath(content_translations_alignments_file)}')
             with open(content_translations_alignments_file, 'rb') as fn:
-                self.content_translations_alignments = pickle.load(fn)
+                self.content_translations_alignments = json.load(fn)
 
     # Parse the SQUAD file and replace the questions, context and answers field with their translations
     # using the content_translations_alignments
