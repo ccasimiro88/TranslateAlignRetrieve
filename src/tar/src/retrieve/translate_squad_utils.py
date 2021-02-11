@@ -72,7 +72,8 @@ def remove_extra_punct(source, translation):
                 elif source[-1] not in periods_commas and translation[-1] in periods_commas:
                     translation = translation.strip(translation[-1])
             # remove brackets
-            if translation[-1] in [b[1] for b in brackets] and any(c for c in translation if c in [b[0] for b in brackets]):
+            if translation[-1] in [b[1] for b in brackets] and any(
+                    c for c in translation if c in [b[0] for b in brackets]):
                 translation = translation
             else:
                 for bracket in brackets:
@@ -101,6 +102,7 @@ def remove_extra_punct(source, translation):
             return translation
     except IndexError:
         return translation
+
 
 # Keep the first part when the answer translation come across
 # two sentences or when there are extra commas with words
@@ -264,116 +266,6 @@ def compute_context_alignment(sentence_alignments):
     return context_alignment
 
 
-# ANSWER EXTRACTION FROM CONTEXT
-# This function extract the answer translated from the context translated only using context alignment.
-# A series of heuristics are applied in order to extract the answer
-def extract_answer_translated_from_alignment(answer_text, answer_start,
-                                             context, context_translated,
-                                             context_alignment,
-                                             max_len_difference=10):
-    # Get the corresponding start and end char of the answer_translated in the context translated
-    # First, get all the index positions for each word in the answer
-    answer_words_positions = [answer_start]
-    for word in answer_text.split():
-        pos = answer_start + len(word) + 1
-        answer_words_positions.append(pos)
-
-    # Second, get all the corresponding index positions in the answer translated
-    answer_translated_words_positions = []
-    for idx, pos in enumerate(answer_words_positions):
-        pos = get_left_right_close_index(context_alignment.keys(), pos, type='left')
-        answer_translated_words_positions.append(context_alignment[pos])
-
-    # Then, detect the start and end position in the answer translated
-    start, end = min(answer_translated_words_positions), max(answer_translated_words_positions)
-    answer_translated_start = start
-    answer_translated_end = end
-
-    # Also, get the next start position to retrieve the answer until that index
-    answer_next_start = answer_start + len(answer_text) + 1
-    answer_next_start = get_left_right_close_index(context_alignment.keys(), answer_next_start, type='right')
-    answer_translated_next_start = context_alignment[answer_next_start]
-
-    # Check if the answer_translated next start index is smaller than the and answer_translated_end index.
-    # If so move to the next right index until is greater than the answer_translated_end
-    while answer_translated_next_start <= answer_translated_end:
-        answer_translated_next_start = shift_value_index_alignment(answer_translated_next_start, context_alignment)
-        # If the maximum index is at the end of the alignment map, change its value to the last character
-        if answer_translated_next_start == -1:
-            answer_translated_next_start = len(context_translated)
-
-    # Extract answer translated from context translated with answer_start and answer_next_start
-    # the answer_translated is a span from the min to max char index (
-    answer_translated = context_translated[answer_translated_start:answer_translated_next_start]
-    return answer_translated, answer_translated_start
-
-
-# This function extract the answer from a given context
-def extract_answer_translated(answer, answer_translated, context, context_translated, context_alignment_tok,
-                              retrieve_answers_from_alignment):
-    # First, compute the src2tran_alignment_char
-    context_alignment_char = get_src2tran_alignment_char(context_alignment_tok, context, context_translated)
-
-    # 1.1)
-    # Match the answer_translated in the context_translated starting from the left-close char index
-    # of the answer_start in the context_alignment. When the answer_start is present in the
-    # context_alignment the closest index is exactly the answer_start index
-    answer_text = answer['text']
-    answer_start = answer['answer_start']
-    answer_start = get_left_right_close_index(list(context_alignment_char.keys()),
-                                              answer_start,
-                                              type='left')
-    try:
-        answer_translated_start = context_alignment_char[answer_start]
-    except KeyError:
-        answer_translated, answer_translated_start = '', -1
-    # Find answer_start in the translated context by looking close to the answer_translated_char_start
-    # Shifting the index by an additional 20 chars to the left in the case
-    # the alignment is not precise enough (20 chars is more or less 2/3 words).
-    # If the shifted answer_start is smaller than 0, we set it as zero to match from start errors
-    shift_index = -20
-    answer_translated_start_shifted = answer_translated_start + shift_index
-    if answer_translated_start_shifted < 0:
-        answer_translated_start_shifted = 0
-
-    if context_translated.lower().find(answer_translated.lower(), answer_translated_start_shifted) != -1:
-
-        answer_translated_start = context_translated.lower().find(answer_translated.lower(),
-                                                                  answer_translated_start_shifted)
-        answer_translated_end = answer_translated_start + len(answer_translated)
-        answer_translated = context_translated[answer_translated_start: answer_translated_end]
-
-    # 1.2) Find the answer_translated in the context_translated from the beginning of the text
-    elif context_translated.lower().find(answer_translated.lower(),
-                                         answer_translated_start) == -1:
-        if context_translated.lower().find(answer_translated.lower()) != -1:
-
-            answer_translated_start = context_translated.lower().find(answer_translated.lower())
-            answer_translated_end = answer_translated_start + len(answer_translated)
-            answer_translated = context_translated[answer_translated_start: answer_translated_end]
-
-        # 2) Retrieve the answer from the context translated using the
-        # answer start and answer end provided by the alignment
-        else:
-            if retrieve_answers_from_alignment:
-                answer_translated, answer_translated_start = \
-                    extract_answer_translated_from_alignment(answer_text, answer_start, context,
-                                                             context_translated, context_alignment_char)
-            else:
-                answer_translated = ''
-                answer_translated_start = -1
-
-    # No answer translated found
-    else:
-        answer_translated = ''
-        answer_translated_start = -1
-
-    # Post-process if the answer is not empty
-    if answer_translated:
-        answer_translated = post_process_answers_translated(answer_text, answer_translated)
-    return answer_translated, answer_translated_start
-
-
 # TRANSLATING
 # Translate text using the OpenNMT-py script
 PUNCTUATION = ['.', ',', '?', '!', '¿', '¡', ')', '(', ']', '[']
@@ -405,4 +297,3 @@ def post_process_translation(source, translation, punctuation=PUNCTUATION):
         return translation
     except IndexError:
         return translation
-
