@@ -14,6 +14,7 @@ import torch
 import logging
 import random
 from ordered_set import OrderedSet
+import tempfile
 
 
 class Aligner:
@@ -55,8 +56,9 @@ class Aligner:
         if self.alignment_model == 'eflomal':
             logging.info(f'Using {self.alignment_model} alignment method')
             return self.eflomal(*alignment_args)
+
         else:
-            raise NotImplementedError
+            raise NotImplementedError('Unsupported alignment model!')
         pass
 
 
@@ -64,9 +66,31 @@ class Translator:
     def __init__(self, translation_engine):
         self.translation_engine = translation_engine
 
+    # Translate via the OpenNMT-py script
+    @staticmethod
+    def opennmt_en_es(source_sentences, batch_size):
+        # filename = os.path.basename(file)
+        # source_filename = os.path.join(output_dir, f'{filename}_source_translate')
+        source_filename = tempfile.NamedTemporaryFile().name
+        translation_filename = tempfile.NamedTemporaryFile().name
+        with open(source_filename, 'w') as sf:
+            sf.writelines('\n'.join(s for s in source_sentences))
+
+        # translation_filename = os.path.join(output_dir, f'{filename}_target_translated')
+        en2es_translate_cmd = SCRIPT_DIR + f'/../nmt/en2es_translate.sh ' \
+                                           f'{source_filename} {translation_filename} {batch_size}'
+        subprocess.run(en2es_translate_cmd.split())
+
+        with open(translation_filename) as tf:
+            translated_sentences = [s.strip() for s in tf.readlines()]
+
+        os.remove(source_filename)
+        os.remove(translation_filename)
+        return translated_sentences
+
     # Translate with MariantMT with HuggingFace library
     @staticmethod
-    def marianmt_hf(sentences, lang_source, lang_target, batch_size):
+    def marianmt_hf(sentences, batch_size, lang_source, lang_target):
         # TODO: check if src-tgt model exists
         def chunks(sentences, batch_size):
             for i in range(0, len(sentences), batch_size):
@@ -74,7 +98,7 @@ class Translator:
 
         model_name = f'Helsinki-NLP/opus-mt-{lang_source}-{lang_target}'
         model = MarianMTModel.from_pretrained(model_name).to(DEVICE).half()
-        logging.info(f"Using {model_name} MarianMT translator for {lang_source}-{lang_target} ")
+        logging.info(f"Using {model_name} MarianMT translator for {lang_source}-{lang_target}")
         tokenizer = MarianTokenizer.from_pretrained(model_name)
         translations = []
         batches = list(chunks(sentences, batch_size))
@@ -86,15 +110,22 @@ class Translator:
 
     def translate(self, sentences, lang_source, lang_target, batch_size, lang_pivot):
         if self.translation_engine == 'marianmt_hf':
-            # Back-translate using pivot language
+            # Translation through pivot language
             if lang_pivot:
                 logging.info(f"Using Back-translation with pivot language {lang_pivot}")
                 return self.marianmt_hf(self.marianmt_hf(sentences, lang_source, lang_pivot, batch_size),
                                         lang_pivot, lang_target, batch_size)
             else:
                 return self.marianmt_hf(sentences, lang_source, lang_target, batch_size)
+
+        elif self.translation_engine == 'opennmt_en-es':
+            assert (lang_source == 'en' and lang_target == 'es'), \
+                ValueError('opennmt translator only supported for en-es')
+            logging.info(f"Using OpenNMT-py translator for {lang_source}-{lang_target}")
+            return self.opennmt_en_es(sentences, batch_size)
+
         else:
-            raise NotImplementedError
+            raise NotImplementedError('Unsupported translation engine!')
 
 
 class SquadTranslator:
@@ -195,26 +226,31 @@ class SquadTranslator:
             content = self.extract_content(dataset)
 
             # Translate
-            content_translated = []
-            if translation_engine == 'marianmt_hf':
-                translator = Translator(translation_engine=translation_engine)
-                # Use MarianMT pre-trained translation engines:
-                content_translated = translator.translate(content,
-                                                          self.lang_source,
-                                                          self.lang_target,
-                                                          self.batch_size,
-                                                          lang_pivot)
-            elif translation_engine == 'opennmt_en-es':
-                if self.lang_target == 'es':
-                    # Translate contexts, questions and answers all together and write to file.
-                    # Also remove duplicates before to translate with set
-                    content_translated = utils.translate(content, self.squad_file, self.output_dir, self.batch_size)
-            else:
-                raise ValueError(f"Unsupported translation engine {translation_engine}")
+            translator = Translator(translation_engine=translation_engine)
+            content_translated = translator.translate(content,
+                                                      self.batch_size,
+                                                      self.lang_source,
+                                                      self.lang_target,
+                                                      lang_pivot)
+            # if translation_engine == 'marianmt_hf':
+            #     translator = Translator(translation_engine=translation_engine)
+            #     # Use MarianMT pre-trained translation engines:
+            #     content_translated = translator.translate(content,
+            #                                               self.lang_source,
+            #                                               self.lang_target,
+            #                                               self.batch_size,
+            #                                               lang_pivot)
+            # elif translation_engine == 'opennmt_en-es':
+            #     if self.lang_target == 'es':
+            #         # Translate contexts, questions and answers all together and write to file.
+            #         # Also remove duplicates before to translate with set
+            #         content_translated = utils.opennmt_en_es(content, self.squad_file, self.output_dir, self.batch_size)
+            # else:
+            #     raise ValueError(f"Unsupported translation engine {translation_engine}")
 
             # Compute alignments
             assert content_translated, 'Content translation is empty!'
-            aligner = Aligner(alignment_model)
+            aligner = Aligner(alignment_model=alignment_model)
             context_sentence_questions_answers_alignments = aligner.align(content,
                                                                           self.lang_source,
                                                                           content_translated,
