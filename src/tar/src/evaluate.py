@@ -16,7 +16,7 @@ def remove_line_breaks(text):
     return text
 
 
-def content_to_qids(dataset):
+def content_to_qids(dataset, no_eval_answers):
     # Extract contexts, questions and answers.
     # Title are not extracted since they are not used as training inputs
     context_to_qids = defaultdict(list)
@@ -27,23 +27,24 @@ def content_to_qids(dataset):
             for qa in par['qas']:
                 # excluding questions with multiple answers to place questions and answers at the same tree level
                 if len(qa['answers']) == 1:
-                    answer = qa['answers'][0]['text']
                     context_to_qids[remove_line_breaks(par['context'])].append(qa['id'])
                     # both questions and answers are at same level and the same alignment strategy can be applied
                     questions_to_qids[qa['question']].append(qa['id'])
-                    answers_to_qids[answer].append(qa['id'])
+                    if not no_eval_answers:
+                        answer = qa['answers'][0]['text']
+                        answers_to_qids[answer].append(qa['id'])
 
     return context_to_qids, questions_to_qids, answers_to_qids
 
 
-def align_content(reference_file, translation_file):
+def align_content(reference_file, translation_file, no_eval_answers):
     # Load data
     with open(reference_file) as rf, open(translation_file) as tf:
         dataset_ref = json.load(rf)
         dataset_tra = json.load(tf)
 
-    context_to_qids_ref, questions_to_qids_ref, answers_to_qids_ref = content_to_qids(dataset_ref)
-    context_to_qids_tra, questions_to_qids_tra, answers_to_qids_tra = content_to_qids(dataset_tra)
+    context_to_qids_ref, questions_to_qids_ref, answers_to_qids_ref = content_to_qids(dataset_ref, no_eval_answers)
+    context_to_qids_tra, questions_to_qids_tra, answers_to_qids_tra = content_to_qids(dataset_tra, no_eval_answers)
 
     references = []
     translations = []
@@ -89,6 +90,7 @@ if __name__ == "__main__":
     parser.add_argument('--reference_file', type=str, help='File with human translated SQUAD data')
     parser.add_argument('--detokenize', default=True, type=str,
                         help='Detokenize file before to compute BLEU score (recommended)')
+    parser.add_argument('--no_eval_answers', action='store_true', help='Compute BLEU with answers')
     parser.add_argument('--output_dir', type=str, help='Output directory')
     args = parser.parse_args()
 
@@ -96,7 +98,7 @@ if __name__ == "__main__":
 
     output_dir = args.output_dir if args.output_dir else os.path.dirname(os.path.realpath(__file__))
     os.makedirs(output_dir, exist_ok=True)
-    references, translations = align_content(args.reference_file, args.translation_file)
+    references, translations = align_content(args.reference_file, args.translation_file, args.no_eval_answers)
     assert len(references) == len(translations), 'References and translations are not aligned!'
 
     # Write references and translations to files
