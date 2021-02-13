@@ -8,17 +8,72 @@ from collections import defaultdict
 import argparse
 import translate_squad_utils as utils
 from transformers import MarianMTModel, MarianTokenizer
+from sacremoses import MosesTokenizer, MosesDetokenizer
 from tqdm import tqdm
 import torch
 import logging
 import random
 from ordered_set import OrderedSet
+import sentence_splitter
 import tempfile
 
 
+class Tokenizer:
+    def __init__(self, lang):
+        self.lang = lang
+        self.max_sent_len = 10
+        self.split_delimiter = ';'
+
+    @staticmethod
+    def moses_tokenizer(lang):
+        return MosesTokenizer(lang=lang)
+
+    @staticmethod
+    def moses_detokenize(lang):
+        return MosesDetokenizer(lang=lang)
+
+    def tokenize(self, text, return_str=True):
+        if self.lang != 'zh':
+            return MosesTokenizer(lang=self.lang).tokenize(text, return_str=return_str, escape=False)
+        else:
+            raise NotImplementedError(f'Unsupported tokenizer for Chinese {self.lang}')
+
+    def detokenize(self, text, return_str=True):
+        if not isinstance(text, list):
+            text = text.split()
+        if self.lang != 'zh':
+            return self.moses_detokenize(self.lang).detokenize(text, return_str=return_str)
+        else:
+            raise NotImplementedError(f'Unsupported tokenizer for Chinese {self.lang}')
+
+    # Chunk sentences longer than a maximum number of words/tokens based on a delimiter character.
+    # This option is used only for very long sentences to avoid shorter translation than the
+    # original source length.
+    # Note that the delimiter can't be a trailing character
+    def split_sentences(self, text, delimiter, max_sent_len, tokenized=True):
+        text_len = len(self.tokenize(text, return_str=True).split()) if tokenized else len(text.split())
+        if text_len >= max_sent_len:
+            delimiter_match = delimiter + ' '
+            text_chunks = [chunk.strip() for chunk in text.split(delimiter_match) if chunk]
+            # Add the delimiter lost during chunking
+            text_chunks = [chunk + delimiter for chunk in text_chunks[:-1]] + [text_chunks[-1]]
+            return text_chunks
+        return [text]
+
+    def tokenize_sentences(self, text):
+        sentences = [chunk
+                     for sentence in sentence_splitter.SentenceSplitter(language=self.lang).split(text)
+                     for chunk in self.split_sentences(sentence,
+                                                       delimiter=self.split_delimiter,
+                                                       max_sent_len=self.max_sent_len)]
+        return sentences
+
+
 class AnswerRetriever:
-    def __init__(self, answers_from_alignment):
+    def __init__(self, answers_from_alignment, tokenizer_src, tokenizer_tgt):
         self.answers_from_alignment = answers_from_alignment
+        self.tokenizer_src = tokenizer_src
+        self.tokenizer_tgt = tokenizer_tgt
 
     # Extract the answer translated from the context translated only using context alignment.
     # A series of heuristics are applied in order to extract the answer
@@ -64,7 +119,8 @@ class AnswerRetriever:
     # Extract the answer from a given context
     def retrieve_answer(self, answer, answer_translated, context, context_translated, context_alignment_tok):
         # First, compute the src2tran_alignment_char
-        context_alignment_char = utils.get_src2tran_alignment_char(context_alignment_tok, context, context_translated)
+        context_alignment_char = utils.get_src2tran_alignment_char(self.tokenizer_src, self.tokenizer_tgt,
+                                                                   context_alignment_tok, context, context_translated)
 
         # 1.1)
         # Match the answer_translated in the context_translated starting from the left-close char index
@@ -127,15 +183,16 @@ class AnswerRetriever:
 
 
 class Aligner:
-    def __init__(self, alignment_model):
+    def __init__(self, alignment_model, tokenizer_src, tokenizer_tgt):
         self.alignment_model = alignment_model
+        self.tokenizer_src = tokenizer_src
+        self.tokenizer_tgt = tokenizer_tgt
 
     # TODO: implement priors for eflomal
-    @staticmethod
-    def eflomal(source_sentences, source_lang, translated_sentences, target_lang,
+    def eflomal(self, source_sentences, source_lang, translated_sentences, target_lang,
                 alignment_type):
-        source_sentences = [utils.tokenize(sentence, source_lang) for sentence in source_sentences]
-        translated_sentences = [utils.tokenize(sentence, target_lang) for sentence in translated_sentences]
+        source_sentences = [self.tokenizer_src.tokenize(sentence, source_lang) for sentence in source_sentences]
+        translated_sentences = [self.tokenizer_tgt.tokenize(sentence, target_lang) for sentence in translated_sentences]
 
         # source_filename = os.path.join(output_dir, '.cached', f'{filename}_source_align')
         source_filename = tempfile.NamedTemporaryFile().name
@@ -219,15 +276,15 @@ class Translator:
             translations.extend([tokenizer.decode(t, skip_special_tokens=True) for t in translated])
         return translations
 
-    def translate(self, sentences, lang_source, lang_target, batch_size, lang_pivot):
+    def translate(self, sentences, batch_size, lang_source, lang_target, lang_pivot):
         if self.translation_engine == 'marianmt_hf':
             # Translation through pivot language
             if lang_pivot:
                 logging.info(f"Using Back-translation with pivot language {lang_pivot}")
-                return self.marianmt_hf(self.marianmt_hf(sentences, lang_source, lang_pivot, batch_size),
-                                        lang_pivot, lang_target, batch_size)
+                return self.marianmt_hf(self.marianmt_hf(sentences, batch_size, lang_source, lang_pivot),
+                                        batch_size, lang_pivot, lang_target)
             else:
-                return self.marianmt_hf(sentences, lang_source, lang_target, batch_size)
+                return self.marianmt_hf(sentences, batch_size, lang_source, lang_target)
 
         elif self.translation_engine == 'opennmt_en-es':
             assert (lang_source == 'en' and lang_target == 'es'), \
@@ -247,7 +304,9 @@ class SquadTranslator:
                  output_dir,
                  alignment_type,
                  answers_from_alignment,
-                 batch_size):
+                 batch_size,
+                 tokenizer_src,
+                 tokenizer_tgt):
 
         self.squad_file = squad_file
         self.lang_source = lang_source
@@ -256,6 +315,10 @@ class SquadTranslator:
         self.alignment_type = alignment_type
         self.answers_from_alignment = answers_from_alignment
         self.batch_size = batch_size
+        self.tokenizer_src = tokenizer_src
+        self.tokenizer_tgt = tokenizer_tgt
+
+        self.sent_tokenizer = Tokenizer(lang=self.lang_source)
 
         self.squad_version = None
         self.dataset = None
@@ -279,8 +342,8 @@ class SquadTranslator:
                              for data in tqdm(dataset['data'], 'Get paragraphs')
                              for paragraph in data['paragraphs']
                              for context_sentence in
-                             tqdm(utils.tokenize_sentences(utils.remove_line_breaks(paragraph['context']),
-                                                           lang=self.lang_source))
+                             tqdm(
+                                 self.sent_tokenizer.tokenize_sentences(utils.remove_line_breaks(paragraph['context'])))
                              if context_sentence]
 
         questions = [qa['question']
@@ -342,7 +405,10 @@ class SquadTranslator:
 
             # Align
             assert content_translated, 'Content translation is empty!'
-            aligner = Aligner(alignment_model=alignment_model)
+
+            aligner = Aligner(alignment_model=alignment_model,
+                              tokenizer_src=self.tokenizer_src,
+                              tokenizer_tgt=self.tokenizer_tgt)
             content_alignments = aligner.align(content,
                                                self.lang_source,
                                                content_translated,
@@ -386,7 +452,9 @@ class SquadTranslator:
         content_translations_alignments = self.translate_align_content(dataset, overwrite_cached_data,
                                                                        translation_engine, lang_pivot, alignment_model)
 
-        answer_retriever = AnswerRetriever(answers_from_alignment=self.answers_from_alignment)
+        answer_retriever = AnswerRetriever(answers_from_alignment=self.answers_from_alignment,
+                                           tokenizer_src=self.tokenizer_src,
+                                           tokenizer_tgt=self.tokenizer_tgt)
 
         for data in tqdm(dataset['data']):
             # title = data['title']
@@ -394,8 +462,8 @@ class SquadTranslator:
             for paragraphs in data['paragraphs']:
                 context = paragraphs['context']
 
-                context_sentences = [s for s in utils.tokenize_sentences(utils.remove_line_breaks(context),
-                                                                         lang=self.lang_source)]
+                context_sentences = [s for s in
+                                     self.sent_tokenizer.tokenize_sentences(utils.remove_line_breaks(context))]
 
                 context_translated = ' '.join(content_translations_alignments[s]['translation']
                                               for s in context_sentences)
@@ -609,13 +677,18 @@ if __name__ == "__main__":
     os.makedirs(args.output_dir, exist_ok=True)
     logging.basicConfig(level=logging.INFO)
 
+    tokenizer_src = Tokenizer(lang=args.lang_source)
+    tokenizer_tgt = Tokenizer(lang=args.lang_target)
+
     squadtranslator = SquadTranslator(args.squad_file,
                                       args.lang_source,
                                       args.lang_target,
                                       args.output_dir,
                                       args.alignment_type,
                                       args.answers_from_alignment,
-                                      args.batch_size)
+                                      args.batch_size,
+                                      tokenizer_src,
+                                      tokenizer_tgt)
 
     logging.info(f'Translate the SQUAD dataset: {args.squad_file}')
     squadtranslator.translate_squad(args.sample_size, args.overwrite_cached_data, args.translation_engine,

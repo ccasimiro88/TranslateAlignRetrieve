@@ -7,45 +7,9 @@ from sacremoses import MosesTokenizer, MosesDetokenizer
 from collections import defaultdict
 from nltk import sent_tokenize
 import sentence_splitter
+from translate_squad import Tokenizer
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
-
-# PROCESSING TEXT
-MAX_NUM_TOKENS = 10
-SPLIT_DELIMITER = ';'
-LANGUAGE_ISO_MAP = {'en': 'english', 'es': 'spanish'}
-
-
-def tokenize(text, lang, return_str=True):
-    return MosesTokenizer(lang=lang).tokenize(text, return_str=return_str, escape=False)
-
-
-def de_tokenize(text, lang):
-    if not isinstance(text, list):
-        text = text.split()
-    return MosesDetokenizer(lang=lang).detokenize(text, return_str=True)
-
-
-# Chunk sentences longer than a maximum number of words/tokens based on a delimiter character.
-# This option is used only for very long sentences to avoid shorter translation than the
-# original source length.
-# Note that the delimiter can't be a trailing character
-def split_sentences(text, lang, delimiter=SPLIT_DELIMITER, max_size=MAX_NUM_TOKENS, tokenized=True):
-    text_len = len(tokenize(text, lang, return_str=True).split()) if tokenized else len(text.split())
-    if text_len >= max_size:
-        delimiter_match = delimiter + ' '
-        text_chunks = [chunk.strip() for chunk in text.split(delimiter_match) if chunk]
-        # Add the delimiter lost during chunking
-        text_chunks = [chunk + delimiter for chunk in text_chunks[:-1]] + [text_chunks[-1]]
-        return text_chunks
-    return [text]
-
-
-def tokenize_sentences(text, lang):
-    sentences = [chunk
-                 for sentence in sentence_splitter.SentenceSplitter(language=lang).split(text)
-                 for chunk in split_sentences(sentence, lang)]
-    return sentences
 
 
 # SQUAD paragraphs contains line breaks that we have to remove
@@ -209,9 +173,9 @@ def tok2char_map(text_raw, text_tok):
 
 # Convert a token-level alignment into a char-level alignment
 # Can be white-spaced tokens or normal tokens, the important thing is the one-to-one mapping
-def get_src2tran_alignment_char(alignment, source, translation):
-    source_tok = tokenize(source, 'en')
-    translation_tok = tokenize(translation, 'es')
+def get_src2tran_alignment_char(tokenizer_src, tokenizer_tgt, alignment, source, translation):
+    source_tok = tokenizer_src.tokenize(source, 'en')
+    translation_tok = tokenizer_tgt.tokenize(translation, 'es')
     src_tok2char = tok2char_map(source, source_tok)
     tran_tok2char = tok2char_map(translation, translation_tok)
 
