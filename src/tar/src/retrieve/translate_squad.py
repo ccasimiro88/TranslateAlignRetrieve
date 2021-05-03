@@ -33,10 +33,11 @@ class Tokenizer:
         return MosesDetokenizer(lang=lang)
 
     def tokenize(self, text, return_str=True):
-        if self.lang != 'zh':
-            return MosesTokenizer(lang=self.lang).tokenize(text, return_str=return_str, escape=False)
-        else:
-            raise NotImplementedError(f'Unsupported tokenizer for Chinese {self.lang}')
+        # if self.lang != 'zh':
+        #     return MosesTokenizer(lang=self.lang).tokenize(text, return_str=return_str, escape=False)
+        # else:
+        #     raise NotImplementedError(f'Unsupported tokenizer for Chinese {self.lang}')
+        return MosesTokenizer(lang=self.lang).tokenize(text, return_str=return_str, escape=False)
 
     def detokenize(self, text, return_str=True):
         if not isinstance(text, list):
@@ -190,34 +191,35 @@ class Aligner:
 
     # TODO: implement priors for eflomal
     def eflomal(self, source_sentences, source_lang, translated_sentences, target_lang,
-                alignment_type):
+                alignment_type, output_dir):
         source_sentences = [self.tokenizer_src.tokenize(sentence, source_lang) for sentence in source_sentences]
         translated_sentences = [self.tokenizer_tgt.tokenize(sentence, target_lang) for sentence in translated_sentences]
 
-        # source_filename = os.path.join(output_dir, '.cached', f'{filename}_source_align')
-        source_filename = tempfile.NamedTemporaryFile().name
+        source_filename = os.path.join(output_dir, '.cached/align_source')
+        # source_filename = tempfile.NamedTemporaryFile().name
         with open(source_filename, 'w') as sf:
             sf.writelines('\n'.join(s for s in source_sentences))
 
-        # translation_filename = os.path.join(output_dir, f'cached_{filename}_target_align')
-        translation_filename = tempfile.NamedTemporaryFile().name
+        translation_filename = os.path.join(output_dir, '.cached/align_target')
+        # translation_filename = tempfile.NamedTemporaryFile().name
         with open(translation_filename, 'w') as tf:
             tf.writelines('\n'.join(s for s in translated_sentences))
 
         # TODO: add the case with priors
-        # alignment_filename = os.path.join(output_dir, f'cached_{filename}_alignment')
-        alignment_filename = tempfile.NamedTemporaryFile().name
+        alignment_filename = os.path.join(output_dir, '.cached/alignment')
+        # alignment_filename = tempfile.NamedTemporaryFile().name
         efolmal_cmd = SCRIPT_DIR + f'/../alignment/compute_alignment.sh ' \
-                                   f'{source_filename} {source_lang} {translation_filename} {target_lang}' \
+                                   f'{source_filename} {translation_filename}' \
                                    f' {alignment_type} {alignment_filename}'
+
         subprocess.run(efolmal_cmd.split())
 
         with open(alignment_filename) as af:
             alignments = [a.strip() for a in af.readlines()]
 
-        os.remove(source_filename)
-        os.remove(translation_filename)
-        os.remove(alignment_filename)
+        # os.remove(source_filename)
+        # os.remove(translation_filename)
+        # os.remove(alignment_filename)
         return alignments
 
     def align(self, *alignment_args):
@@ -390,50 +392,62 @@ class SquadTranslator:
                                                                 os.path.basename(self.squad_file),
                                                                 self.lang_source,
                                                                 self.lang_target))
-        os.makedirs(os.path.dirname(content_translations_alignments_file), exist_ok=True)
-        if not os.path.isfile(content_translations_alignments_file) or overwrite_cached_data:
-            # Extract content
-            content = self.extract_content(dataset)
 
-            # Translate
-            translator = Translator(translation_engine=translation_engine)
+        content_translations_file = os.path.join(self.output_dir, '.cached/',
+                                                 '{}_content_translations_{}-{}.json'.format(
+                                                     os.path.basename(self.squad_file),
+                                                     self.lang_source,
+                                                     self.lang_target))
+
+        os.makedirs(os.path.dirname(content_translations_alignments_file), exist_ok=True)
+        # if not os.path.isfile(content_translations_alignments_file) or overwrite_cached_data:
+        # Extract content
+        content = self.extract_content(dataset)
+        # Translate
+        translator = Translator(translation_engine=translation_engine)
+
+        if not os.path.isfile(content_translations_file) or overwrite_cached_data:
             content_translated = translator.translate(content,
                                                       self.batch_size,
                                                       self.lang_source,
                                                       self.lang_target,
                                                       lang_pivot)
-
-            # Align
             assert content_translated, 'Content translation is empty!'
 
-            aligner = Aligner(alignment_model=alignment_model,
-                              tokenizer_src=self.tokenizer_src,
-                              tokenizer_tgt=self.tokenizer_tgt)
-            content_alignments = aligner.align(content,
-                                               self.lang_source,
-                                               content_translated,
-                                               self.lang_target,
-                                               self.alignment_type)
-            assert content_alignments, 'Alignment is empty!'
+            # store translation in cache
+            with open(content_translations_file, 'w') as ct:
+                ct.writelines(f'{translation}\n' for translation in content_translated)
 
-            # Add original sentence, the corresponding translations and the alignments
-            content_translations_alignments = defaultdict()
-            for sentence, sentence_translated, alignment in zip(content,
-                                                                content_translated,
-                                                                content_alignments):
-                content_translations_alignments[sentence] = {'source': sentence,
-                                                             'translation': sentence_translated,
-                                                             'alignment': alignment}
-            with open(content_translations_alignments_file, 'w') as fn:
-                json.dump(content_translations_alignments, fn)
-
-        # Load content translated and aligned from file
         else:
-            logging.info(
-                f'Using cached data (translations and alignments) from: '
-                f'{os.path.realpath(content_translations_alignments_file)}')
-            with open(content_translations_alignments_file, 'rb') as fn:
-                content_translations_alignments = json.load(fn)
+            # get translations from cache
+            logging.info(f"Get content translation from cache: {content_translations_file}")
+            with open(content_translations_file) as ct:
+                content_translated = [translation for translation in ct.readlines()]
+
+        # Align
+        aligner = Aligner(alignment_model=alignment_model,
+                          tokenizer_src=self.tokenizer_src,
+                          tokenizer_tgt=self.tokenizer_tgt)
+        content_alignments = aligner.align(content,
+                                           self.lang_source,
+                                           content_translated,
+                                           self.lang_target,
+                                           self.alignment_type,
+                                           self.output_dir)
+
+        assert content_alignments, 'Alignment is empty!'
+
+        # Add original sentence, the corresponding translations and the alignments
+        content_translations_alignments = defaultdict()
+        for sentence, sentence_translated, alignment in zip(content,
+                                                            content_translated,
+                                                            content_alignments):
+            content_translations_alignments[sentence] = {'source': sentence,
+                                                         'translation': sentence_translated,
+                                                         'alignment': alignment}
+        with open(content_translations_alignments_file, 'w') as fn:
+            json.dump(content_translations_alignments, fn)
+
         return content_translations_alignments
 
     # Parse the SQUAD file and replace the questions, context and answers field with their translations
@@ -667,10 +681,15 @@ if __name__ == "__main__":
     parser.add_argument('--alignment_model', type=str, default='eflomal',
                         help='Select the alignment model (supported only eflomal)')
     parser.add_argument('--lang_pivot', type=str, help='Use pivot language to perform back-translation')
+    parser.add_argument('--no_cuda', action='store_true', help='Do not use CUDA')
     args = parser.parse_args()
 
     SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
-    DEVICE = torch.cuda.current_device()
+
+    if not args.no_cuda:
+        DEVICE = torch.cuda.current_device()
+    else:
+        DEVICE = 'cpu'
     random.seed(args.seed)
 
     # Create output directory if doesn't exist already

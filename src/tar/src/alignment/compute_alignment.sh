@@ -6,12 +6,10 @@ source ${ENV_DIR}/bin/activate
 # Compute the source-translation alignment with eflomal
 # The text should be tokenized before computing alignment.
 FILE_SRC=$1
-LANG_SRC=$2
-FILE_TGT=$3
-LANG_TGT=$4
-ALIGNMENT_TYPE=$5
-OUTPUT_FILE=$6
-PRIORS_DIR=$7
+FILE_TGT=$2
+ALIGNMENT_TYPE=$3
+OUTPUT_FILE=$4
+PRIORS_DIR=$5
 
 export LC_ALL=en_US.UTF8
 
