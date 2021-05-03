@@ -16,6 +16,7 @@ import random
 from ordered_set import OrderedSet
 import sentence_splitter
 import tempfile
+import jieba
 
 
 class Tokenizer:
@@ -33,11 +34,10 @@ class Tokenizer:
         return MosesDetokenizer(lang=lang)
 
     def tokenize(self, text, return_str=True):
-        # if self.lang != 'zh':
-        #     return MosesTokenizer(lang=self.lang).tokenize(text, return_str=return_str, escape=False)
-        # else:
-        #     raise NotImplementedError(f'Unsupported tokenizer for Chinese {self.lang}')
-        return MosesTokenizer(lang=self.lang).tokenize(text, return_str=return_str, escape=False)
+        if self.lang != 'zh':
+            return MosesTokenizer(lang=self.lang).tokenize(text, return_str=return_str, escape=False)
+        else:
+            return " ".join(jieba.cut(text, cut_all=False))  # accurate segmentation mode
 
     def detokenize(self, text, return_str=True):
         if not isinstance(text, list):
@@ -45,7 +45,7 @@ class Tokenizer:
         if self.lang != 'zh':
             return self.moses_detokenize(self.lang).detokenize(text, return_str=return_str)
         else:
-            raise NotImplementedError(f'Unsupported tokenizer for Chinese {self.lang}')
+            return "".join(text)
 
     # Chunk sentences longer than a maximum number of words/tokens based on a delimiter character.
     # This option is used only for very long sentences to avoid shorter translation than the
@@ -195,19 +195,16 @@ class Aligner:
         source_sentences = [self.tokenizer_src.tokenize(sentence, source_lang) for sentence in source_sentences]
         translated_sentences = [self.tokenizer_tgt.tokenize(sentence, target_lang) for sentence in translated_sentences]
 
-        # source_filename = os.path.join(output_dir, '.cached/align_source')
-        source_filename = tempfile.NamedTemporaryFile().name
+        source_filename = tempfile.NamedTemporaryFile(dir=output_dir, prefix="align.source").name
         with open(source_filename, 'w', encoding='utf8') as sf:
             sf.writelines("\n".join(s for s in source_sentences))
 
-        # translation_filename = os.path.join(output_dir, '.cached/align_target')
-        translation_filename = tempfile.NamedTemporaryFile().name
+        translation_filename = tempfile.NamedTemporaryFile(dir=output_dir, prefix="align.target").name
         with open(translation_filename, 'w', encoding='utf8') as tf:
             tf.writelines("\n".join(s for s in translated_sentences))
 
         # TODO: add the case with priors
-        # alignment_filename = os.path.join(output_dir, '.cached/alignment')
-        alignment_filename = tempfile.NamedTemporaryFile().name
+        alignment_filename = tempfile.NamedTemporaryFile(dir=output_dir, prefix="alignment").name
         efolmal_cmd = SCRIPT_DIR + f'/../alignment/compute_alignment.sh ' \
                                    f'{source_filename} {translation_filename}' \
                                    f' {alignment_type} {alignment_filename}'
@@ -217,9 +214,6 @@ class Aligner:
         with open(alignment_filename) as af:
             alignments = [a.strip() for a in af.readlines()]
 
-        # os.remove(source_filename)
-        # os.remove(translation_filename)
-        # os.remove(alignment_filename)
         return alignments
 
     def align(self, *alignment_args):

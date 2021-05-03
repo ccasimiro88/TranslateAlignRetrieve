@@ -9,6 +9,7 @@ from collections import defaultdict
 import os
 import logging
 from sacremoses import MosesTokenizer
+import jieba
 
 
 def remove_line_breaks(text):
@@ -105,9 +106,8 @@ if __name__ == "__main__":
 
     # tokenize Chinese text before computing BLEU
     if args.lang in ['zh']:
-        tokenizer = MosesTokenizer(args.lang)
-        references = [tokenizer.tokenize(ref, return_str=True) for ref in references]
-        translations = [tokenizer.tokenize(tra, return_str=True) for tra in translations]
+        references = [" ".join(jieba.cut(ref, cut_all=False)) for ref in references]
+        translations = [" ".join(jieba.cut(tra, cut_all=False)) for tra in translations]
 
     # Write references and translations to files
     with open(os.path.join(output_dir, 'references.txt'), 'w') as rf, \
