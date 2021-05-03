@@ -197,13 +197,13 @@ class Aligner:
 
         source_filename = os.path.join(output_dir, '.cached/align_source')
         # source_filename = tempfile.NamedTemporaryFile().name
-        with open(source_filename, 'w') as sf:
-            sf.writelines('\n'.join(s for s in source_sentences))
+        with open(source_filename, 'w', encoding='utf8') as sf:
+            sf.writelines("\n".join(s for s in source_sentences))
 
         translation_filename = os.path.join(output_dir, '.cached/align_target')
         # translation_filename = tempfile.NamedTemporaryFile().name
-        with open(translation_filename, 'w') as tf:
-            tf.writelines('\n'.join(s for s in translated_sentences))
+        with open(translation_filename, 'w', encoding='utf8') as tf:
+            tf.writelines("\n".join(s for s in translated_sentences))
 
         # TODO: add the case with priors
         alignment_filename = os.path.join(output_dir, '.cached/alignment')
