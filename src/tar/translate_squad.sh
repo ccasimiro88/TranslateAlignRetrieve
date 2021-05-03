@@ -13,5 +13,5 @@ for lang in $target_langs; do
   python $SCRIPT_DIR/src/retrieve/translate_squad.py \
   --squad_file $source_file \
   --lang_target $lang --answers_from_alignment \
-  --output_dir $SCRIPT_DIR/data/${name}-tar/$lang --batch_size 32 --no_cuda
+  --output_dir $SCRIPT_DIR/data/${name}-tar/$lang --batch_size 32
 done

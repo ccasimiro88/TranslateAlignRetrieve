@@ -195,19 +195,19 @@ class Aligner:
         source_sentences = [self.tokenizer_src.tokenize(sentence, source_lang) for sentence in source_sentences]
         translated_sentences = [self.tokenizer_tgt.tokenize(sentence, target_lang) for sentence in translated_sentences]
 
-        source_filename = os.path.join(output_dir, '.cached/align_source')
-        # source_filename = tempfile.NamedTemporaryFile().name
+        # source_filename = os.path.join(output_dir, '.cached/align_source')
+        source_filename = tempfile.NamedTemporaryFile().name
         with open(source_filename, 'w', encoding='utf8') as sf:
             sf.writelines("\n".join(s for s in source_sentences))
 
-        translation_filename = os.path.join(output_dir, '.cached/align_target')
-        # translation_filename = tempfile.NamedTemporaryFile().name
+        # translation_filename = os.path.join(output_dir, '.cached/align_target')
+        translation_filename = tempfile.NamedTemporaryFile().name
         with open(translation_filename, 'w', encoding='utf8') as tf:
             tf.writelines("\n".join(s for s in translated_sentences))
 
         # TODO: add the case with priors
-        alignment_filename = os.path.join(output_dir, '.cached/alignment')
-        # alignment_filename = tempfile.NamedTemporaryFile().name
+        # alignment_filename = os.path.join(output_dir, '.cached/alignment')
+        alignment_filename = tempfile.NamedTemporaryFile().name
         efolmal_cmd = SCRIPT_DIR + f'/../alignment/compute_alignment.sh ' \
                                    f'{source_filename} {translation_filename}' \
                                    f' {alignment_type} {alignment_filename}'

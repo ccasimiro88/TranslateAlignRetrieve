@@ -8,6 +8,7 @@ from tqdm import tqdm
 from collections import defaultdict
 import os
 import logging
+from sacremoses import MosesTokenizer
 
 
 def remove_line_breaks(text):
@@ -79,27 +80,34 @@ def align_content(reference_file, translation_file, no_eval_answers):
     return references, translations
 
 
-def bleu(references, translations, detokenize):
-    score = list_bleu([references], translations, detok=detokenize)
+def bleu(references, translations):
+    score = list_bleu([references], translations)
     return score
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--translation_file', type=str, help='File with automatic translated SQUAD data')
-    parser.add_argument('--reference_file', type=str, help='File with human translated SQUAD data')
-    parser.add_argument('--detokenize', default=True, type=str,
-                        help='Detokenize file before to compute BLEU score (recommended)')
-    parser.add_argument('--no_eval_answers', action='store_true', help='Compute BLEU with answers')
-    parser.add_argument('--output_dir', type=str, help='Output directory')
+    parser.add_argument('--translation_file', type=str, help='File with automatic translated SQUAD data', required=True)
+    parser.add_argument('--reference_file', type=str, help='File with human translated SQUAD data', required=True),
+    parser.add_argument('--output_dir', type=str, help='Output directory', required=True)
+    parser.add_argument('--lang', type=str, help='Language of the dataset', required=True)
+    parser.add_argument('--no_eval_answers', action='store_true', help='Compute BLEU without answers')
+
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
 
     output_dir = args.output_dir if args.output_dir else os.path.dirname(os.path.realpath(__file__))
     os.makedirs(output_dir, exist_ok=True)
+
     references, translations = align_content(args.reference_file, args.translation_file, args.no_eval_answers)
     assert len(references) == len(translations), 'References and translations are not aligned!'
+
+    # tokenize Chinese text before computing BLEU
+    if args.lang in ['zh']:
+        tokenizer = MosesTokenizer(args.lang)
+        references = [tokenizer.tokenize(ref, return_str=True) for ref in references]
+        translations = [tokenizer.tokenize(tra, return_str=True) for tra in translations]
 
     # Write references and translations to files
     with open(os.path.join(output_dir, 'references.txt'), 'w') as rf, \
@@ -107,8 +115,7 @@ if __name__ == "__main__":
         rf.writelines(f'{line}\n' for line in references)
         tf.writelines(f'{line}\n' for line in translations)
 
-    score = bleu(references, translations, args.detokenize)
+    score = bleu(references, translations)
     logging.info(f'BLEU = {score}')
     with open(os.path.join(output_dir, 'bleu.txt'), 'w') as bf:
         bf.write(f'BLEU = {score}')
-
