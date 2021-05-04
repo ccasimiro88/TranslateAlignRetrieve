@@ -18,6 +18,7 @@ import sentence_splitter
 import tempfile
 import jieba
 
+
 class Tokenizer:
     def __init__(self, lang):
         self.lang = lang
@@ -238,6 +239,10 @@ class Translator:
     def __init__(self, translation_engine):
         self.translation_engine = translation_engine
 
+    @staticmethod
+    def replace_empty_translations(translations):
+        return [translation if translation else 'none' for translation in translations]
+
     # Translate via the OpenNMT-py script
     @staticmethod
     def opennmt_en_es(source_sentences, batch_size):
@@ -285,10 +290,15 @@ class Translator:
             # Translation through pivot language
             if lang_pivot:
                 logging.info(f"Using Back-translation with pivot language {lang_pivot}")
-                return self.marianmt_hf(self.marianmt_hf(sentences, batch_size, lang_source, lang_pivot),
-                                        batch_size, lang_pivot, lang_target)
+                return self.replace_empty_translations(
+                    self.marianmt_hf(
+                        self.marianmt_hf(sentences, batch_size, lang_source, lang_pivot),
+                        batch_size, lang_pivot, lang_target)
+                )
             else:
-                return self.marianmt_hf(sentences, batch_size, lang_source, lang_target)
+                return self.replace_empty_translations(
+                    self.marianmt_hf(sentences, batch_size, lang_source, lang_target)
+                )
 
         elif self.translation_engine == 'opennmt_en-es':
             assert (lang_source == 'en' and lang_target == 'es'), \
@@ -346,8 +356,7 @@ class SquadTranslator:
                              for data in tqdm(dataset['data'], 'Get paragraphs')
                              for paragraph in data['paragraphs']
                              for context_sentence in
-                             tqdm(
-                                 self.sent_tokenizer.tokenize_sentences(utils.remove_line_breaks(paragraph['context'])))
+                             self.sent_tokenizer.tokenize_sentences(utils.remove_line_breaks(paragraph['context']))
                              if context_sentence]
 
         questions = [qa['question']
@@ -668,7 +677,8 @@ if __name__ == "__main__":
                         help='language of the SQUAD dataset to translate (the default value set to English)')
     parser.add_argument('--lang_target', type=str, help='translation language')
     parser.add_argument('--output_dir', type=str, help='directory where all the generated files are stored')
-    parser.add_argument('--answer_retrieval', type=str, choices=['span_plus_alignment', 'alignment', 'span'], default='all',
+    parser.add_argument('--answer_retrieval', type=str, choices=['span_plus_alignment', 'alignment', 'span'],
+                        default='all',
                         help='Specify how translated answers are retrieved')
     parser.add_argument('--overwrite_cached_data', action='store_true',
                         help='Overwrite pre-computed cached data (translation and alignments)')

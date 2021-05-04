@@ -110,8 +110,8 @@ if __name__ == "__main__":
         translations = [" ".join(jieba.cut(tra, cut_all=False)) for tra in translations]
 
     # Write references and translations to files
-    with open(os.path.join(output_dir, f'references_{args.translation_file}.txt'), 'w') as rf, \
-            open(os.path.join(output_dir, f'translations_{args.translation_file}.txt'), 'w') as tf:
+    with open(os.path.join(output_dir, f'references_{os.path.basename(args.translation_file)}.txt'), 'w') as rf, \
+            open(os.path.join(output_dir, f'translations_{os.path.basename(args.translation_file)}.txt'), 'w') as tf:
         rf.writelines(f'{line}\n' for line in references)
         tf.writelines(f'{line}\n' for line in translations)
 
