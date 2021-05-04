@@ -18,7 +18,6 @@ import sentence_splitter
 import tempfile
 import jieba
 
-
 class Tokenizer:
     def __init__(self, lang):
         self.lang = lang
@@ -71,8 +70,8 @@ class Tokenizer:
 
 
 class AnswerRetriever:
-    def __init__(self, answers_from_alignment, tokenizer_src, tokenizer_tgt):
-        self.answers_from_alignment = answers_from_alignment
+    def __init__(self, answer_retrieval, tokenizer_src, tokenizer_tgt):
+        self.answer_retrieval = answer_retrieval
         self.tokenizer_src = tokenizer_src
         self.tokenizer_tgt = tokenizer_tgt
 
@@ -118,67 +117,72 @@ class AnswerRetriever:
         return answer_translated, answer_translated_start
 
     # Extract the answer from a given context
-    def retrieve_answer(self, answer, answer_translated, context, context_translated, context_alignment_tok):
+    def retrieve_answer(self, answer, answer_translated, context, context_translated, context_alignment_tok,
+                        postprocess):
         # First, compute the src2tran_alignment_char
         context_alignment_char = utils.get_src2tran_alignment_char(self.tokenizer_src, self.tokenizer_tgt,
                                                                    context_alignment_tok, context, context_translated)
 
-        # 1.1)
-        # Match the answer_translated in the context_translated starting from the left-close char index
-        # of the answer_start in the context_alignment. When the answer_start is present in the
-        # context_alignment the closest index is exactly the answer_start index
         answer_text = answer['text']
         answer_start = answer['answer_start']
-        answer_start = utils.get_left_right_close_index(list(context_alignment_char.keys()),
-                                                        answer_start,
-                                                        type='left')
-        try:
-            answer_translated_start = context_alignment_char[answer_start]
-        except KeyError:
-            answer_translated, answer_translated_start = '', -1
-        # Find answer_start in the translated context by looking close to the answer_translated_char_start
-        # Shifting the index by an additional 20 chars to the left in the case
-        # the alignment is not precise enough (20 chars is more or less 2/3 words).
-        # If the shifted answer_start is smaller than 0, we set it as zero to match from start errors
-        shift_index = -20
-        answer_translated_start_shifted = answer_translated_start + shift_index
-        if answer_translated_start_shifted < 0:
-            answer_translated_start_shifted = 0
 
-        if context_translated.lower().find(answer_translated.lower(), answer_translated_start_shifted) != -1:
+        # Retrieve answer ONLY from alignment (very noisy)
+        if self.answer_retrieval == 'alignment':
+            answer_translated, answer_translated_start = \
+                self.retrieve_answer_from_alignment(answer_text, answer_start, context_translated,
+                                                    context_alignment_char)
 
-            answer_translated_start = context_translated.lower().find(answer_translated.lower(),
-                                                                      answer_translated_start_shifted)
-            answer_translated_end = answer_translated_start + len(answer_translated)
-            answer_translated = context_translated[answer_translated_start: answer_translated_end]
+        elif self.answer_retrieval in ['span', 'span_plus_alignment']:
+            # 1.1)
+            # Match the answer_translated in the context_translated starting from the left-close char index
+            # of the answer_start in the context_alignment. When the answer_start is present in the
+            # context_alignment the closest index is exactly the answer_start index
+            answer_start = utils.get_left_right_close_index(list(context_alignment_char.keys()),
+                                                            answer_start,
+                                                            type='left')
+            try:
+                answer_translated_start = context_alignment_char[answer_start]
+            except KeyError:
+                answer_translated, answer_translated_start = '', -1
+            # Find answer_start in the translated context by looking close to the answer_translated_char_start
+            # Shifting the index by an additional 20 chars to the left in the case
+            # the alignment is not precise enough (20 chars is more or less 2/3 words).
+            # If the shifted answer_start is smaller than 0, we set it as zero to match from start errors
+            shift_index = -20
+            answer_translated_start_shifted = answer_translated_start + shift_index
+            if answer_translated_start_shifted < 0:
+                answer_translated_start_shifted = 0
 
-        # 1.2) Find the answer_translated in the context_translated from the beginning of the text
-        elif context_translated.lower().find(answer_translated.lower(),
-                                             answer_translated_start) == -1:
-            if context_translated.lower().find(answer_translated.lower()) != -1:
+            if context_translated.lower().find(answer_translated.lower(), answer_translated_start_shifted) != -1:
 
-                answer_translated_start = context_translated.lower().find(answer_translated.lower())
+                answer_translated_start = context_translated.lower().find(answer_translated.lower(),
+                                                                          answer_translated_start_shifted)
                 answer_translated_end = answer_translated_start + len(answer_translated)
                 answer_translated = context_translated[answer_translated_start: answer_translated_end]
 
-            # 2) Retrieve the answer from the context translated using the
+            # 1.2) Find the answer_translated in the context_translated from the beginning of the text
+            elif context_translated.lower().find(answer_translated.lower(),
+                                                 answer_translated_start) == -1:
+                if context_translated.lower().find(answer_translated.lower()) != -1:
+                    answer_translated_start = context_translated.lower().find(answer_translated.lower())
+                    answer_translated_end = answer_translated_start + len(answer_translated)
+                    answer_translated = context_translated[answer_translated_start: answer_translated_end]
+
+            # 2) If no answer is found and the alignment retrieval option is on,
+            # retrieve the answer from the context translated using the
             # answer start and answer end provided by the alignment
-            else:
-                if self.answers_from_alignment:
+            if not answer_translated_start != -1 and not answer_translated:
+                if self.answer_retrieval == 'span_plus_alignment':
                     answer_translated, answer_translated_start = \
                         self.retrieve_answer_from_alignment(answer_text, answer_start, context_translated,
                                                             context_alignment_char)
-                else:
+                # No answer translated found
+                elif self.answer_retrieval == 'span':
                     answer_translated = ''
                     answer_translated_start = -1
 
-        # No answer translated found
-        else:
-            answer_translated = ''
-            answer_translated_start = -1
-
         # Post-process if the answer is not empty
-        if answer_translated:
+        if postprocess and answer_translated:
             answer_translated = utils.post_process_answers_translated(answer_text, answer_translated)
         return answer_translated, answer_translated_start
 
@@ -213,6 +217,10 @@ class Aligner:
 
         with open(alignment_filename) as af:
             alignments = [a.strip() for a in af.readlines()]
+
+        os.remove(source_filename)
+        os.remove(translation_filename)
+        os.remove(alignment_filename)
 
         return alignments
 
@@ -299,7 +307,7 @@ class SquadTranslator:
                  lang_target,
                  output_dir,
                  alignment_type,
-                 answers_from_alignment,
+                 answer_retrieval,
                  batch_size,
                  tokenizer_src,
                  tokenizer_tgt):
@@ -309,7 +317,7 @@ class SquadTranslator:
         self.lang_target = lang_target
         self.output_dir = output_dir
         self.alignment_type = alignment_type
-        self.answers_from_alignment = answers_from_alignment
+        self.answer_retrieval = answer_retrieval
         self.batch_size = batch_size
         self.tokenizer_src = tokenizer_src
         self.tokenizer_tgt = tokenizer_tgt
@@ -454,13 +462,14 @@ class SquadTranslator:
     #
     # 2) If the previous two steps fail, optionally extract the answer from the context translated
     # using the answer start and answer end provided by the alignment
-    def translate_squad(self, sample_size, overwrite_cached_data, translation_engine, lang_pivot, alignment_model):
+    def translate_squad(self, sample_size, overwrite_cached_data, translation_engine, lang_pivot, alignment_model,
+                        postprocess_answer):
         dataset = self.load_dataset(self.squad_file, sample_size=sample_size)
 
         content_translations_alignments = self.translate_align_content(dataset, overwrite_cached_data,
                                                                        translation_engine, lang_pivot, alignment_model)
 
-        answer_retriever = AnswerRetriever(answers_from_alignment=self.answers_from_alignment,
+        answer_retriever = AnswerRetriever(answer_retrieval=self.answer_retrieval,
                                            tokenizer_src=self.tokenizer_src,
                                            tokenizer_tgt=self.tokenizer_tgt)
 
@@ -496,7 +505,8 @@ class SquadTranslator:
                                                                      answer_translated,
                                                                      context,
                                                                      context_translated,
-                                                                     context_alignment_tok)
+                                                                     context_alignment_tok,
+                                                                     postprocess=postprocess_answer)
 
                                 answer['text'] = answer_translated
                                 answer['answer_start'] = answer_translated_start
@@ -510,7 +520,8 @@ class SquadTranslator:
                                                                      plausible_answer_translated,
                                                                      context,
                                                                      context_translated,
-                                                                     context_alignment_tok)
+                                                                     context_alignment_tok,
+                                                                     postprocess=postprocess_answer)
                                 plausible_answer['text'] = answer_translated
                                 plausible_answer['answer_start'] = answer_translated_start
 
@@ -523,7 +534,8 @@ class SquadTranslator:
                                                                  answer_translated,
                                                                  context,
                                                                  context_translated,
-                                                                 context_alignment_tok)
+                                                                 context_alignment_tok,
+                                                                 postprocess=postprocess_answer)
                             answer['text'] = answer_translated
                             answer['answer_start'] = answer_translated_start
 
@@ -622,14 +634,10 @@ class SquadTranslator:
                         {'context': content_context, 'qas': qas_cleaned})
 
         # Write the dataset back to the translated dataset
-        if self.answers_from_alignment:
-            translated_file = os.path.join(self.output_dir,
-                                           os.path.basename(self.squad_file).replace(f'.json',
-                                                                                     f'-{self.lang_target}.json'))
-        else:
-            translated_file = os.path.join(self.output_dir,
-                                           os.path.basename(self.squad_file).replace(f'.json',
-                                                                                     f'-{self.lang_target}_small.json'))
+        translated_file = os.path.join(self.output_dir,
+                                       os.path.basename(self.squad_file).replace(
+                                           f'.json',
+                                           f'-answer-retrieved-{self.answer_retrieval}-{self.lang_target}.json'))
 
         with open(translated_file, 'w') as fn:
             json.dump(content_cleaned, fn)
@@ -660,8 +668,8 @@ if __name__ == "__main__":
                         help='language of the SQUAD dataset to translate (the default value set to English)')
     parser.add_argument('--lang_target', type=str, help='translation language')
     parser.add_argument('--output_dir', type=str, help='directory where all the generated files are stored')
-    parser.add_argument('--answers_from_alignment', action='store_true',
-                        help='retrieve translated answers only from the alignment')
+    parser.add_argument('--answer_retrieval', type=str, choices=['span_plus_alignment', 'alignment', 'span'], default='all',
+                        help='Specify how translated answers are retrieved')
     parser.add_argument('--overwrite_cached_data', action='store_true',
                         help='Overwrite pre-computed cached data (translation and alignments)')
     parser.add_argument('--alignment_type', type=str, default='forward',
@@ -676,6 +684,8 @@ if __name__ == "__main__":
                         help='Select the alignment model (supported only eflomal)')
     parser.add_argument('--lang_pivot', type=str, help='Use pivot language to perform back-translation')
     parser.add_argument('--no_cuda', action='store_true', help='Do not use CUDA')
+    parser.add_argument('--postprocess_answer', action='store_true',
+                        help='Post-process retrieved answer with heuristics')
     args = parser.parse_args()
 
     SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -698,14 +708,14 @@ if __name__ == "__main__":
                                       args.lang_target,
                                       args.output_dir,
                                       args.alignment_type,
-                                      args.answers_from_alignment,
+                                      args.answer_retrieval,
                                       args.batch_size,
                                       tokenizer_src,
                                       tokenizer_tgt)
 
     logging.info(f'Translate the SQUAD dataset: {args.squad_file}')
     squadtranslator.translate_squad(args.sample_size, args.overwrite_cached_data, args.translation_engine,
-                                    args.lang_pivot, args.alignment_model)
+                                    args.lang_pivot, args.alignment_model, args.postprocess_answer)
 
     end = time.time()
     logging.info(f'Total execution time: {round(end - start)} s')

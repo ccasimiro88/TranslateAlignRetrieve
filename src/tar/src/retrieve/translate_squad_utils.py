@@ -20,6 +20,7 @@ def remove_line_breaks(text):
 
 
 # Remove trailing punctuation from the answers retrieved from alignment
+# TODO: generalize to different languages
 def remove_extra_punct(source, translation):
     periods_commas = '.,;:'
     brackets = [['(', ')'], ['[', ']'], ['{', '}']]
@@ -90,7 +91,7 @@ def post_process_answers_translated(source, translation):
     else:
         translation = translation.strip()
         translation = remove_extra_text(source, translation)
-        translation = remove_extra_punct(source, translation)
+        # translation = remove_extra_punct(source, translation)
     return translation
 
 
