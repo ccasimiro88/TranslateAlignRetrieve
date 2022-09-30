@@ -16,7 +16,7 @@ h5py==2.10.0
 idna==2.8
 importlib-metadata==0.23
 jmespath==0.9.4
-joblib==0.14.0
+joblib==1.2.0
 jsonlines==1.2.0
 Keras-Applications==1.0.8
 Keras-Preprocessing==1.1.0
